@@ -13,10 +13,12 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import com.wombatriy.androidplayer.library.LibraryCache
 import com.wombatriy.androidplayer.player.PlaybackController
 import com.wombatriy.androidplayer.ui.LibraryScreen
 import com.wombatriy.androidplayer.ui.PlayerScreen
 import kotlin.math.roundToInt
+import java.util.concurrent.Executors
 
 /**
  * Activity is only the composition root: navigation, SAF permission and folder loading.
@@ -29,9 +31,12 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var pages: List<View>
     private val prefs by lazy { getSharedPreferences("library", MODE_PRIVATE) }
+    private val cache by lazy { LibraryCache(this) }
+    private val libraryIo = Executors.newSingleThreadExecutor()
 
     private var activeTab = 1
-    private var scanGeneration = 0
+    @Volatile private var scanGeneration = 0
+    private var loadedFromCache = false
     private var loadingFolder = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -47,11 +52,11 @@ class MainActivity : Activity() {
         createLayout()
         if (savedInstanceState != null) {
             activeTab = savedInstanceState.getInt(STATE_TAB, 1)
-            libraryScreen.restorePosition(
-                savedInstanceState.getInt(STATE_SCROLL_INDEX, 0),
-                savedInstanceState.getInt(STATE_SCROLL_OFFSET, 0)
-            )
         }
+        libraryScreen.restorePosition(
+            savedInstanceState?.getInt(STATE_SCROLL_INDEX) ?: prefs.getInt(KEY_SCROLL_INDEX, 0),
+            savedInstanceState?.getInt(STATE_SCROLL_OFFSET) ?: prefs.getInt(KEY_SCROLL_OFFSET, 0)
+        )
         showTab(activeTab)
         restoreFolder()
     }
@@ -76,7 +81,7 @@ class MainActivity : Activity() {
         libraryScreen = LibraryScreen(
             this,
             onChooseFolder = ::chooseFolder,
-            onRescan = ::restoreFolder,
+            onRescan = ::rescanSelectedFolder,
             onTrackSelected = ::playTrack
         )
         pages = listOf(
@@ -134,6 +139,7 @@ class MainActivity : Activity() {
         }
 
     private fun showTab(index: Int) {
+        if (activeTab == 1 && index != 1) saveScrollPosition()
         activeTab = index.coerceIn(0, pages.lastIndex)
         // Keep tab instances and their state in memory; never reconstruct lists.
         pages.forEachIndexed { i, page ->
@@ -142,7 +148,7 @@ class MainActivity : Activity() {
     }
 
     private fun playTrack(track: Track) {
-        playback.load(track)
+        playback.load(track, libraryScreen.tracksSnapshot())
         showTab(0)
     }
 
@@ -163,42 +169,87 @@ class MainActivity : Activity() {
             Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         try {
             contentResolver.takePersistableUriPermission(uri, flags)
+            val previous = prefs.getString(KEY_TREE_URI, null)
+            if (previous != uri.toString()) {
+                // Do not apply the old folder's scroll position to a new library.
+                libraryScreen.restorePosition(0, 0)
+                prefs.edit().putInt(KEY_SCROLL_INDEX, 0).putInt(KEY_SCROLL_OFFSET, 0).apply()
+            }
             prefs.edit().putString(KEY_TREE_URI, uri.toString()).apply()
-            scan(uri)
+            loadLibrary(uri, forceRefresh = true)
         } catch (e: SecurityException) {
             Toast.makeText(this, "Folder permission denied: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
     private fun restoreFolder() {
-        prefs.getString(KEY_TREE_URI, null)?.let { scan(Uri.parse(it)) }
+        prefs.getString(KEY_TREE_URI, null)?.let {
+            loadLibrary(Uri.parse(it), forceRefresh = false)
+        }
     }
 
-    private fun scan(treeUri: Uri) {
+    private fun rescanSelectedFolder() {
+        prefs.getString(KEY_TREE_URI, null)?.let {
+            loadLibrary(Uri.parse(it), forceRefresh = true)
+        }
+    }
+
+    private fun loadLibrary(treeUri: Uri, forceRefresh: Boolean) {
+        val hasReadGrant = contentResolver.persistedUriPermissions.any {
+            it.uri == treeUri && it.isReadPermission
+        }
+        if (!hasReadGrant) {
+            libraryScreen.setLoading(false)
+            Toast.makeText(this, "Folder access expired. Choose it again.", Toast.LENGTH_LONG).show()
+            return
+        }
         val generation = ++scanGeneration
         loadingFolder = true
         libraryScreen.setLoading(true)
         updateStatus()
 
-        Thread {
-            val result = runCatching { MusicFolder.load(this, treeUri) }
+        libraryIo.execute {
+            val result = runCatching {
+                val cached = if (forceRefresh) null else cache.read(treeUri)
+                if (cached != null) {
+                    cached to true
+                } else {
+                    val fresh = MusicFolder.load(this, treeUri)
+                    // Cache failures must never hide otherwise usable scanned tracks.
+                    if (generation == scanGeneration) runCatching { cache.write(treeUri, fresh) }
+                    fresh to false
+                }
+            }
             runOnUiThread {
-                // A user can select a new folder before an older scan finishes.
                 if (generation != scanGeneration || isFinishing || isDestroyed) return@runOnUiThread
                 loadingFolder = false
-                result.onSuccess { libraryScreen.submitTracks(it) }
-                    .onFailure { error ->
-                        libraryScreen.setLoading(false)
-                        Toast.makeText(this, "Unable to scan folder: ${error.message}", Toast.LENGTH_LONG).show()
-                    }
+                result.onSuccess { (tracks, fromCache) ->
+                    loadedFromCache = fromCache
+                    libraryScreen.submitTracks(tracks)
+                }.onFailure { error ->
+                    libraryScreen.setLoading(false)
+                    Toast.makeText(this, "Unable to load folder: ${error.message}", Toast.LENGTH_LONG).show()
+                }
                 updateStatus()
             }
-        }.start()
+        }
+    }
+
+    private fun saveScrollPosition() {
+        prefs.edit()
+            .putInt(KEY_SCROLL_INDEX, libraryScreen.firstVisibleIndex)
+            .putInt(KEY_SCROLL_OFFSET, libraryScreen.firstVisibleOffset)
+            .apply()
+    }
+
+    override fun onPause() {
+        saveScrollPosition()
+        super.onPause()
     }
 
     private fun updateStatus() {
         status.text = if (loadingFolder) "Scanning music folder…"
-        else "${libraryScreen.trackCount} tracks loaded"
+        else "${libraryScreen.trackCount} tracks loaded${if (loadedFromCache) " (cached)" else ""}"
     }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()
@@ -213,12 +264,15 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         ++scanGeneration
         playback.release()
+        libraryIo.shutdownNow()
         super.onDestroy()
     }
 
     companion object {
         private const val FOLDER_REQUEST = 41
         private const val KEY_TREE_URI = "treeUri"
+        private const val KEY_SCROLL_INDEX = "scrollIndex"
+        private const val KEY_SCROLL_OFFSET = "scrollOffset"
         private const val STATE_TAB = "tab"
         private const val STATE_SCROLL_INDEX = "libraryIndex"
         private const val STATE_SCROLL_OFFSET = "libraryOffset"

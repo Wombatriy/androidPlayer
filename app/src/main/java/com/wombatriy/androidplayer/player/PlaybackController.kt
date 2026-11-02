@@ -10,8 +10,8 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.wombatriy.androidplayer.Track
 
 /**
- * Owns ExoPlayer, playback controls and A–B state.
- * The UI never calls ExoPlayer directly, so all seeks respect loop bounds.
+ * Single owner of ExoPlayer, navigation and A–B loop.
+ * At track end: Stop / Next / Repeat. A–B looping overrides the end mode.
  */
 class PlaybackController(context: Context, private val listener: Listener) {
     interface Listener {
@@ -22,7 +22,9 @@ class PlaybackController(context: Context, private val listener: Listener) {
         fun onPlaybackError(message: String)
     }
 
+    private val prefs = context.getSharedPreferences("playback", Context.MODE_PRIVATE)
     private val player = ExoPlayer.Builder(context).build()
+    private val queue = PlaybackQueue<Track>()
     private val handler = Handler(Looper.getMainLooper())
     private var released = false
 
@@ -33,10 +35,20 @@ class PlaybackController(context: Context, private val listener: Listener) {
     var pointB: Long? = null
         private set
 
+    var endMode: EndMode = runCatching {
+        EndMode.valueOf(prefs.getString(KEY_END_MODE, EndMode.NEXT.name) ?: EndMode.NEXT.name)
+    }.getOrDefault(EndMode.NEXT)
+        private set
+
+    val hasPrevious: Boolean get() = queue.hasPrevious
+    val hasNext: Boolean get() = queue.hasNext
+    val queuePosition: Int get() = queue.position
+    val queueSize: Int get() = queue.size
     val speed: Float get() = player.playbackParameters.speed
     val currentPosition: Long get() = player.currentPosition.coerceAtLeast(0L)
     val duration: Long get() = player.duration.takeIf { it > 0L } ?: 0L
-    val showsPause: Boolean get() = player.playWhenReady && player.playbackState != Player.STATE_ENDED
+    val showsPause: Boolean get() =
+        player.playWhenReady && player.playbackState != Player.STATE_ENDED
 
     private val activeLoop: LoopRange?
         get() {
@@ -64,14 +76,14 @@ class PlaybackController(context: Context, private val listener: Listener) {
 
     init {
         player.addListener(object : Player.Listener {
-            // isPlaying briefly becomes false during buffering/seeking; playWhenReady
-            // represents user intent and avoids flashing the Play/Pause button.
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 listener.onPlaybackControlsChanged()
             }
+
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_ENDED) listener.onPlaybackControlsChanged()
+                if (playbackState == Player.STATE_ENDED) onTrackEnded()
             }
+
             override fun onPlayerError(error: PlaybackException) {
                 listener.onPlaybackError(error.localizedMessage ?: "Playback failed")
                 listener.onPlaybackControlsChanged()
@@ -80,7 +92,16 @@ class PlaybackController(context: Context, private val listener: Listener) {
         handler.post(ticker)
     }
 
-    fun load(track: Track) {
+    /**
+     * Library's alphabetical order acts as the initial playback queue.
+     * Playlist-based queues will reuse this controller in a later iteration.
+     */
+    fun load(track: Track, libraryTracks: List<Track>) {
+        queue.select(track, libraryTracks)
+        playTrack(track)
+    }
+
+    private fun playTrack(track: Track) {
         currentTrack = track
         pointA = null
         pointB = null
@@ -92,8 +113,46 @@ class PlaybackController(context: Context, private val listener: Listener) {
         listener.onPlaybackControlsChanged()
     }
 
+    fun next() {
+        queue.next()?.let(::playTrack)
+    }
+
+    fun previous() {
+        queue.previous()?.let(::playTrack)
+    }
+
+    fun selectEndMode(mode: EndMode) {
+        if (endMode == mode) return
+        endMode = mode
+        prefs.edit().putString(KEY_END_MODE, mode.name).apply()
+        listener.onPlaybackControlsChanged()
+    }
+
+    private fun onTrackEnded() {
+        // A loop whose B is at the end of a track may reach STATE_ENDED before
+        // the periodic loop check; keep repeating A–B instead of advancing.
+        val loop = activeLoop
+        if (loop != null) {
+            player.seekTo(loop.startMs)
+            player.play()
+        } else when (endMode) {
+            EndMode.STOP -> Unit // STATE_ENDED already stops playback.
+            EndMode.REPEAT -> {
+                player.seekTo(0L)
+                player.play()
+            }
+            EndMode.NEXT -> {
+                val next = queue.next()
+                if (next != null) playTrack(next)
+            }
+        }
+        listener.onPlaybackControlsChanged()
+    }
+
     fun togglePlayPause() {
-        if (showsPause) player.pause() else {
+        if (showsPause) {
+            player.pause()
+        } else {
             if (player.playbackState == Player.STATE_ENDED) {
                 player.seekTo(activeLoop?.startMs ?: 0L)
             }
@@ -104,7 +163,7 @@ class PlaybackController(context: Context, private val listener: Listener) {
 
     fun seekTo(requestedMs: Long) {
         val bounded = requestedMs.coerceAtLeast(0L).let {
-            if (duration > 0) it.coerceAtMost(duration) else it
+            if (duration > 0L) it.coerceAtMost(duration) else it
         }
         val target = activeLoop?.constrainSeek(bounded) ?: bounded
         player.seekTo(target)
@@ -116,7 +175,6 @@ class PlaybackController(context: Context, private val listener: Listener) {
     fun setA() {
         pointA = currentPosition
         listener.onLoopChanged()
-        // Once A–B becomes active, always keep the playhead inside it.
         normalizeCurrentPosition()
     }
 
@@ -148,4 +206,6 @@ class PlaybackController(context: Context, private val listener: Listener) {
         handler.removeCallbacks(ticker)
         player.release()
     }
+
+    companion object { private const val KEY_END_MODE = "endMode" }
 }

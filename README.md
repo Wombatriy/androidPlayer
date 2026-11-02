@@ -69,3 +69,34 @@ seeking within [A, B) stays at the requested position. Play/Pause uses
 Run `./gradlew :app:assembleDebug :app:testDebugUnitTest` to compile and test.
 See [ROADMAP.md](ROADMAP.md) for future improvements. Higher-quality pitch-preserving
 time stretching will prioritize playback speeds between **0.8× and 1.1×**.
+
+## Iteration 02C — fast startup and playback queue
+
+On first launch or a selected new folder, the app enumerates the SAF tree in a worker
+thread and stores a snapshot in private app storage. **On later app launches the
+snapshot is loaded without traversing the folder again**. Press **Library → Rescan**
+when files have been added, deleted or renamed. A missing/invalid snapshot is
+recovered by scanning again. Playlist and BPM features will build on this metadata.
+
+Library scroll index and pixel offset are saved to preferences on pause and when
+leaving the Library tab, so returning after closing/relaunching the app restores
+its previous place (after the library snapshot loads).
+
+Player has **Previous / Play-Pause / Next** buttons and the initial queue follows
+the alphabetical Library order. The selected track-end mode is remembered:
+
+- **Stop:** stop at the end of this track.
+- **Next:** play the next Library item, stopping after the last one.
+- **Repeat:** repeat the current track.
+
+An active A–B loop takes priority over these end-of-track modes. Changing tracks
+clears the A–B markers. Audio is still owned by the Activity: background playback
+and lock-screen Play/Previous/Next controls are planned in ROADMAP.md (02F).
+
+### GitHub Actions notifications
+
+The Android build workflow now uses only `workflow_dispatch`, not automatic
+`push` or `pull_request` triggers. To run it manually, open **GitHub → Actions →
+Android build → Run workflow** and select a branch. Build locally with
+`./gradlew :app:assembleDebug :app:testDebugUnitTest` (PowerShell:
+`.\\gradlew.bat :app:assembleDebug :app:testDebugUnitTest`).

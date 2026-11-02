@@ -9,6 +9,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
+import com.wombatriy.androidplayer.player.EndMode
 import com.wombatriy.androidplayer.player.PlaybackController
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -21,10 +22,14 @@ class PlayerScreen(context: Context, private val playback: PlaybackController) :
     }
     private val nameLabel = context.textLine("Choose a track in Library", 18f)
     private val bpmLabel = context.textLine()
+    private val queueLabel = context.textLine()
     private val errorLabel = context.textLine()
     private val positionLabel = context.textLine("00:00 / 00:00")
     private val positionBar = SeekBar(context)
     private val playButton = context.actionButton("Play") { playback.togglePlayPause() }
+    private val previousButton = context.actionButton("Previous") { playback.previous() }
+    private val nextButton = context.actionButton("Next") { playback.next() }
+    private val modeButtons = mutableMapOf<EndMode, Button>()
     private val speedLabel = context.textLine("1.00×")
     private val speedBar = SeekBar(context)
     private val loopLabel = context.textLine()
@@ -39,6 +44,7 @@ class PlayerScreen(context: Context, private val playback: PlaybackController) :
         column.addView(context.textLine("Player", 23f))
         column.addView(nameLabel)
         column.addView(bpmLabel)
+        column.addView(queueLabel)
         column.addView(errorLabel)
         column.addView(controls)
 
@@ -65,12 +71,17 @@ class PlayerScreen(context: Context, private val playback: PlaybackController) :
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        seekControls.addView(context.actionButton("−10s") { playback.skipBy(-10_000L) },
-            LinearLayout.LayoutParams(0, -2, 1f))
+        seekControls.addView(previousButton, LinearLayout.LayoutParams(0, -2, 1f))
         seekControls.addView(playButton, LinearLayout.LayoutParams(0, -2, 1f))
-        seekControls.addView(context.actionButton("+10s") { playback.skipBy(10_000L) },
-            LinearLayout.LayoutParams(0, -2, 1f))
+        seekControls.addView(nextButton, LinearLayout.LayoutParams(0, -2, 1f))
         controls.addView(seekControls)
+
+        val jumps = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        jumps.addView(context.actionButton("−10s") { playback.skipBy(-10_000L) },
+            LinearLayout.LayoutParams(0, -2, 1f))
+        jumps.addView(context.actionButton("+10s") { playback.skipBy(10_000L) },
+            LinearLayout.LayoutParams(0, -2, 1f))
+        controls.addView(jumps)
 
         controls.addView(context.textLine("Speed (pitch preserved)"))
         controls.addView(speedLabel)
@@ -95,6 +106,15 @@ class PlayerScreen(context: Context, private val playback: PlaybackController) :
             updateSpeedLabel()
         })
 
+        controls.addView(context.textLine("At track end (A–B loop takes priority)"))
+        val modes = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        EndMode.entries.forEach { mode ->
+            val button = context.actionButton(mode.caption) { playback.selectEndMode(mode) }
+            modeButtons[mode] = button
+            modes.addView(button, LinearLayout.LayoutParams(0, -2, 1f))
+        }
+        controls.addView(modes)
+
         controls.addView(loopLabel)
         val loopControls = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         loopControls.addView(context.actionButton("Set A") { playback.setA() },
@@ -113,6 +133,8 @@ class PlayerScreen(context: Context, private val playback: PlaybackController) :
         nameLabel.text = track?.name ?: "Choose a track in Library"
         bpmLabel.text = track?.filenameBpm?.let { "Filename BPM: $it" } ?: ""
         bpmLabel.visibility = if (track?.filenameBpm == null) View.GONE else View.VISIBLE
+        queueLabel.text = if (track != null) "Track ${playback.queuePosition + 1} of ${playback.queueSize}" else ""
+        queueLabel.visibility = if (track == null) View.GONE else View.VISIBLE
         errorLabel.visibility = View.GONE
         controls.visibility = if (track == null) View.GONE else View.VISIBLE
         updatePosition(playback.currentPosition, playback.duration)
@@ -140,6 +162,13 @@ class PlayerScreen(context: Context, private val playback: PlaybackController) :
         // playWhenReady does not flicker as ExoPlayer re-buffers during a seek.
         val expected = if (playback.showsPause) "Pause" else "Play"
         if (playButton.text != expected) playButton.text = expected
+        previousButton.isEnabled = playback.hasPrevious
+        nextButton.isEnabled = playback.hasNext
+        for ((mode, button) in modeButtons) {
+            val selected = mode == playback.endMode
+            button.setTextColor(if (selected) Color.rgb(0, 110, 110) else Color.rgb(45, 50, 55))
+            button.setTypeface(null, if (selected) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+        }
     }
 
     fun updateLoop() {

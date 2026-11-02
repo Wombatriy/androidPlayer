@@ -51,6 +51,7 @@ class LibraryScreen(
     }
 
     val trackCount: Int get() = adapter.count
+    fun tracksSnapshot(): List<Track> = adapter.snapshot()
     val firstVisibleIndex: Int get() = list.firstVisiblePosition
     val firstVisibleOffset: Int get() = list.getChildAt(0)?.top ?: 0
 
@@ -73,13 +74,14 @@ class LibraryScreen(
         val offset = if (restoreIndex != null) restoreOffset else firstVisibleOffset
         adapter.submit(tracks)
         val target = index.coerceIn(0, (tracks.size - 1).coerceAtLeast(0))
-        if (tracks.isNotEmpty()) list.setSelectionFromTop(target, offset)
+        if (tracks.isNotEmpty()) list.post { list.setSelectionFromTop(target, offset) }
         restoreIndex = null
         setLoading(false)
     }
 
     private class TrackAdapter(private val context: Context) : BaseAdapter() {
         private var items: List<Track> = emptyList()
+        fun snapshot(): List<Track> = items
         fun submit(newItems: List<Track>) {
             items = newItems
             notifyDataSetChanged()

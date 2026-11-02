@@ -1,7 +1,7 @@
 # Android Player — iterative roadmap
 
 We work in small feature branches and PRs based on `main`.
-A PR requires successful Android CI and a manual phone test before merging.
+A PR requires a manual phone test before merging. CI is manual-only: no push/PR-triggered runs.
 
 ## 01 — Player foundation (completed)
 - SAF music directory picker and recursive file loading
@@ -26,13 +26,16 @@ A PR requires successful Android CI and a manual phone test before merging.
 - [x] JVM unit tests for loop boundary handling
 - [ ] Manual performance/behavior verification on a large phone library
 
-## 02C — Next/previous and playback modes
-- [ ] Previous and next track controls
-- [ ] Explicit current queue, initially based on selected library folder
-- [ ] Stop after current track
-- [ ] Advance to next track, stop after final item
-- [ ] Repeat current track
-- [ ] Later apply same modes to playlists
+## 02C — Fast startup and track navigation (PR #4)
+- [x] Persist scanned track list in private atomic JSON cache (load cached snapshot at launch)
+- [x] Only rescan on explicit Rescan / folder selection / missing cache
+- [x] Persist Library scroll index and offset across full app restarts
+- [x] Previous/next buttons with library-sorted queue, without wrapping
+- [x] Stop, Next and Repeat on track end; persist selected mode
+- [x] A–B loop takes priority over track-end mode
+- [x] Separate PlaybackQueue and LibraryCache classes with pure queue tests
+- [ ] Device verification with thousands of files and restart/force-stop
+- [ ] Later apply same modes to user playlists
 
 ## 02D — Higher-quality time stretching
 - [ ] **Prioritize sound fidelity for 0.8×–1.1×**; 0.25×–0.79× and 1.11×–1.50× can use a faster/less accurate algorithm
@@ -45,6 +48,14 @@ A PR requires successful Android CI and a manual phone test before merging.
 - [ ] Asynchronously calculate and cache waveform preview
 - [ ] Visually place and adjust markers A/B
 - [ ] Tighten A/B timing to avoid audible transition artifacts
+
+## 02F — Background playback and lock-screen controls
+- [ ] Extract playback from Activity into MediaSessionService
+- [ ] Add a media session / notification for lock-screen and notification shade
+- [ ] Show Play/Pause, Previous and Next on lock-screen media controls
+- [ ] Keep playback working when screen is off or app is backgrounded
+- [ ] Test Bluetooth controls, headset buttons, audio focus and interruptions
+- [ ] Foreground-service permissions and notifications per Android API level
 
 ## 03 — Single-track BPM
 - [ ] Parse a leading `BPM - ` from filename first
@@ -74,5 +85,7 @@ A PR requires successful Android CI and a manual phone test before merging.
 - Kotlin, AndroidX Media3, SAF (no blanket storage permission).
 - Keep `MainActivity` small: orchestration only; isolate playback logic and screens.
 - Keep scanning and later BPM computation off the UI thread.
+- A cached library snapshot may be stale; use Rescan to pick up new/deleted files.
+- GitHub Actions build runs only when manually dispatched.
 - Keep targetSdk=35 and minSdk=26 unless a specific feature requires otherwise.
 - CI tests don't replace manual listening on a physical phone.
