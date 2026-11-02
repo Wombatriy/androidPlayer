@@ -50,3 +50,22 @@ git pull origin feature/01-player-foundation
 In Android Studio, use **Sync Project with Gradle Files**. Select **Gradle Wrapper** as the Gradle distribution and **JDK 17** as Gradle JDK. Install Android SDK 35 when prompted.
 
 The repo has a GitHub Actions workflow that attempts a clean debug build for each PR. Local machine-specific files such as `local.properties` should not normally be committed; the workflow discards the checked-in `local.properties` before building.
+
+## Iteration 02B — architecture and tests
+
+This iteration separates `MainActivity` (tab navigation, SAF and scanning),
+`player/PlaybackController.kt` (Media3 and A–B constraints),
+`player/LoopRange.kt` (pure loop boundary logic), and `ui/PlayerScreen.kt`,
+`ui/LibraryScreen.kt`, `ui/SpeedRulerView.kt` (retained views).
+
+The Library tab now uses recycled `ListView` rows rather than eagerly constructing
+one view for every file. Its scroll position persists when switching tabs or playing
+an item, and the selected scroll anchor is kept on rescan.
+
+The loop is **end-exclusive**: seeking before A or at/after B restarts at A;
+seeking within [A, B) stays at the requested position. Play/Pause uses
+`playWhenReady` to avoid flashing while playback buffers after seeking.
+
+Run `./gradlew :app:assembleDebug :app:testDebugUnitTest` to compile and test.
+See [ROADMAP.md](ROADMAP.md) for future improvements. Higher-quality pitch-preserving
+time stretching will prioritize playback speeds between **0.8× and 1.1×**.
