@@ -91,7 +91,7 @@ the alphabetical Library order. The selected track-end mode is remembered:
 
 An active A–B loop takes priority over these end-of-track modes. Changing tracks
 clears the A–B markers. Audio is still owned by the Activity: background playback
-and lock-screen Play/Previous/Next controls are planned in ROADMAP.md (02F).
+and lock-screen Play/Previous/Next controls are planned in ROADMAP.md (09).
 
 ### GitHub Actions notifications
 
