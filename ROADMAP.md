@@ -37,12 +37,17 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [ ] Device verification with thousands of files and restart/force-stop
 - [ ] Later apply same modes to user playlists
 
-## 02D — Higher-quality time stretching
+## 02D — Speed precision and audio comparison (PR #5)
+- [x] Tap the centered speed value (e.g. 1.00×) to enter an integer **25–150%** via numeric keyboard
+- [x] Keep slider, entered percent, Reset and the speed label synchronized
+- [x] Show **filename BPM → effective BPM** whenever playback speed differs from 1.00×
+- [x] Expose controlled comparison of built-in Media3 Sonic with experimental Android AudioTrack mixer; selection applies on next app launch
+- [x] Validate BPM and percent rounding with JVM unit tests
 - [ ] **Prioritize sound fidelity for 0.8×–1.1×**; 0.25×–0.79× and 1.11×–1.50× can use a faster/less accurate algorithm
-- [ ] Baseline Sonic on rhythmic percussion and vocals
-- [ ] Compare Rubber Band / SoundTouch or other suitable algorithm, checking Android performance, real-time latency and license
+- [ ] User listening comparison of Sonic vs Android mixer at 0.80×, 0.90×, 1.10× (percussion and vocals)
+- [ ] Compare Rubber Band / SoundTouch, checking Android performance, real-time latency and license obligations
 - [ ] Benchmark transitions into/out of high-quality range and looping
-- [ ] Select processor only after listening comparisons, not from benchmarks alone
+- [ ] Select/implement a proven high-quality processor only after listening comparisons, not from marketing claims alone
 
 ## 02E — Waveform
 - [ ] Asynchronously calculate and cache waveform preview

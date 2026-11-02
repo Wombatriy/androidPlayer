@@ -1,6 +1,14 @@
 package com.wombatriy.androidplayer.ui
 
+import android.app.AlertDialog
 import android.content.Context
+import android.graphics.Paint
+import android.text.InputFilter
+import android.text.InputType
+import android.view.WindowManager
+import android.view.inputmethod.EditorInfo
+import android.widget.EditText
+import android.widget.Toast
 import android.graphics.Color
 import android.view.Gravity
 import android.view.View
@@ -9,7 +17,9 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
+import com.wombatriy.androidplayer.player.AudioBackend
 import com.wombatriy.androidplayer.player.EndMode
+import com.wombatriy.androidplayer.player.TempoMath
 import com.wombatriy.androidplayer.player.PlaybackController
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -30,7 +40,14 @@ class PlayerScreen(context: Context, private val playback: PlaybackController) :
     private val previousButton = context.actionButton("Previous") { playback.previous() }
     private val nextButton = context.actionButton("Next") { playback.next() }
     private val modeButtons = mutableMapOf<EndMode, Button>()
-    private val speedLabel = context.textLine("1.00×")
+    private val speedLabel = context.textLine("1.00×", 24f).apply {
+        textAlignment = View.TEXT_ALIGNMENT_CENTER
+        setTextColor(Color.rgb(0, 113, 112))
+        paintFlags = paintFlags or Paint.UNDERLINE_TEXT_FLAG
+        isFocusable = true
+        setOnClickListener { showManualSpeedInput() }
+    }
+    private val audioBackendButton = context.actionButton("Audio: Sonic") { showAudioBackendPicker() }
     private val speedBar = SeekBar(context)
     private val loopLabel = context.textLine()
     private val controls = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
@@ -83,29 +100,28 @@ class PlayerScreen(context: Context, private val playback: PlaybackController) :
             LinearLayout.LayoutParams(0, -2, 1f))
         controls.addView(jumps)
 
-        controls.addView(context.textLine("Speed (pitch preserved)"))
+        // Tap the centered speed value for precise input in integer percent.
         controls.addView(speedLabel)
-        speedBar.max = 125 // 0 -> 0.25×, 125 -> 1.50×
-        speedBar.progress = ((playback.speed - 0.25f) * 100).roundToInt().coerceIn(0, 125)
+        speedBar.max = TempoMath.MAX_PERCENT - TempoMath.MIN_PERCENT
+        speedBar.progress = TempoMath.toPercent(playback.speed) - TempoMath.MIN_PERCENT
         speedBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onStartTrackingTouch(bar: SeekBar) = Unit
             override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
-                if (fromUser) {
-                    val newSpeed = (25 + progress) / 100f
-                    playback.setSpeed(newSpeed)
-                    updateSpeedLabel()
-                }
+                if (fromUser) setSpeedPercent(TempoMath.MIN_PERCENT + progress)
             }
             override fun onStopTrackingTouch(bar: SeekBar) = Unit
         })
         controls.addView(speedBar)
         controls.addView(SpeedRulerView(context), LinearLayout.LayoutParams(-1, context.dp(58)))
         controls.addView(context.actionButton("Reset speed to 1.00×") {
-            playback.setSpeed(1f)
-            speedBar.progress = 75
-            updateSpeedLabel()
+            setSpeedPercent(TempoMath.DEFAULT_PERCENT)
         })
 
+        controls.addView(audioBackendButton)
+        controls.addView(context.textLine(
+            "Compare Sonic and the Android mixer at 0.80×–1.10×. Switching requires restarting the app.",
+            12f
+        ))
         controls.addView(context.textLine("At track end (A–B loop takes priority)"))
         val modes = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         EndMode.entries.forEach { mode ->
@@ -131,8 +147,7 @@ class PlayerScreen(context: Context, private val playback: PlaybackController) :
     fun refreshTrack() {
         val track = playback.currentTrack
         nameLabel.text = track?.name ?: "Choose a track in Library"
-        bpmLabel.text = track?.filenameBpm?.let { "Filename BPM: $it" } ?: ""
-        bpmLabel.visibility = if (track?.filenameBpm == null) View.GONE else View.VISIBLE
+        updateBpmLabel()
         queueLabel.text = if (track != null) "Track ${playback.queuePosition + 1} of ${playback.queueSize}" else ""
         queueLabel.visibility = if (track == null) View.GONE else View.VISIBLE
         errorLabel.visibility = View.GONE
@@ -140,7 +155,8 @@ class PlayerScreen(context: Context, private val playback: PlaybackController) :
         updatePosition(playback.currentPosition, playback.duration)
         updatePlaybackState()
         updateLoop()
-        updateSpeedLabel()
+        refreshSpeed()
+        updateBackendLabel()
     }
 
     fun showPlaybackError(message: String) {
@@ -182,8 +198,99 @@ class PlayerScreen(context: Context, private val playback: PlaybackController) :
         loopLabel.text = "A = ${a?.let(::format) ?: "unset"}    B = ${b?.let(::format) ?: "unset"}\n$state"
     }
 
-    private fun updateSpeedLabel() {
+    /** Called after slider, keyboard and Media3 playback-parameter changes. */
+    fun refreshSpeed() {
+        val percent = TempoMath.toPercent(playback.speed)
+        val newProgress = percent - TempoMath.MIN_PERCENT
+        if (speedBar.progress != newProgress) speedBar.progress = newProgress
         speedLabel.text = String.format(Locale.US, "%.2f×", playback.speed)
+        speedLabel.contentDescription = "Playback speed $percent percent. Tap to enter manually."
+        updateBpmLabel()
+    }
+
+    private fun updateBpmLabel() {
+        val originalBpm = playback.currentTrack?.filenameBpm
+        val percent = TempoMath.toPercent(playback.speed)
+        bpmLabel.text = when {
+            originalBpm == null -> ""
+            percent == TempoMath.DEFAULT_PERCENT -> "Filename BPM: $originalBpm"
+            else -> "Filename BPM: $originalBpm → ${TempoMath.effectiveBpm(originalBpm, percent)} BPM"
+        }
+        bpmLabel.visibility = if (originalBpm == null) View.GONE else View.VISIBLE
+    }
+
+    private fun setSpeedPercent(percent: Int) {
+        playback.setSpeed(TempoMath.toSpeed(percent))
+        refreshSpeed()
+    }
+
+    private fun showManualSpeedInput() {
+        val field = EditText(context).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            filters = arrayOf(InputFilter.LengthFilter(3))
+            isSingleLine = true
+            setText(TempoMath.toPercent(playback.speed).toString())
+            selectAll()
+        }
+        val margin = context.dp(20)
+        val wrapper = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(margin, 0, margin, 0)
+            addView(field, LinearLayout.LayoutParams(-1, -2))
+        }
+        val dialog = AlertDialog.Builder(context)
+            .setTitle("Playback speed (%)")
+            .setMessage("Enter a whole number from 25 to 150. 100 means 1.00×.")
+            .setView(wrapper)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Apply", null)
+            .create()
+        dialog.setOnShowListener {
+            val applyInput = {
+                val percent = TempoMath.parsePercent(field.text.toString())
+                if (percent == null) {
+                    field.error = "Enter an integer from 25 to 150"
+                } else {
+                    setSpeedPercent(percent)
+                    dialog.dismiss()
+                }
+            }
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { applyInput() }
+            field.setOnEditorActionListener { _, actionId, _ ->
+                if (actionId == EditorInfo.IME_ACTION_DONE) {
+                    applyInput()
+                    true
+                } else false
+            }
+        }
+        dialog.show()
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+    }
+
+    private fun showAudioBackendPicker() {
+        val choices = AudioBackend.entries.toTypedArray()
+        val preferred = playback.preferredAudioBackend
+        AlertDialog.Builder(context)
+            .setTitle("Audio processing (for listening comparisons)")
+            .setSingleChoiceItems(choices.map { it.label }.toTypedArray(), choices.indexOf(preferred)) { dialog, which ->
+                playback.chooseAudioBackendForNextLaunch(choices[which])
+                updateBackendLabel()
+                dialog.dismiss()
+                Toast.makeText(context, "Restart the app to apply the audio engine change", Toast.LENGTH_LONG).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun updateBackendLabel() {
+        val active = playback.audioBackend
+        val requested = playback.preferredAudioBackend
+        audioBackendButton.text = if (active == requested) {
+            "Audio: ${active.label}"
+        } else {
+            "Audio: ${active.label} (switch pending)"
+        }
     }
 
     private fun format(ms: Long): String {

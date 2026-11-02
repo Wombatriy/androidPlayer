@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -20,10 +21,14 @@ class PlaybackController(context: Context, private val listener: Listener) {
         fun onPositionChanged(positionMs: Long, durationMs: Long)
         fun onLoopChanged()
         fun onPlaybackError(message: String)
+        fun onSpeedChanged()
     }
 
     private val prefs = context.getSharedPreferences("playback", Context.MODE_PRIVATE)
-    private val player = ExoPlayer.Builder(context).build()
+    /** Applied to the currently running player; changing preference requires a restart. */
+    val audioBackend: AudioBackend = readAudioBackend()
+    val preferredAudioBackend: AudioBackend get() = readAudioBackend()
+    private val player = AudioEngineFactory.create(context, audioBackend)
     private val queue = PlaybackQueue<Track>()
     private val handler = Handler(Looper.getMainLooper())
     private var released = false
@@ -78,6 +83,11 @@ class PlaybackController(context: Context, private val listener: Listener) {
         player.addListener(object : Player.Listener {
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 listener.onPlaybackControlsChanged()
+            }
+
+            override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
+                // A device's mixer may reject a requested speed. Reflect the effective value.
+                listener.onSpeedChanged()
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -199,6 +209,17 @@ class PlaybackController(context: Context, private val listener: Listener) {
     fun setSpeed(value: Float) {
         require(value in 0.25f..1.50f)
         player.setPlaybackSpeed(value)
+        listener.onSpeedChanged()
+    }
+
+    private fun readAudioBackend(): AudioBackend =
+        runCatching {
+            AudioBackend.valueOf(prefs.getString(KEY_AUDIO_BACKEND, AudioBackend.SONIC.name) ?: AudioBackend.SONIC.name)
+        }.getOrDefault(AudioBackend.SONIC)
+
+    /** Saves the preferred backend without interrupting playback. Effective after relaunch. */
+    fun chooseAudioBackendForNextLaunch(backend: AudioBackend) {
+        prefs.edit().putString(KEY_AUDIO_BACKEND, backend.name).apply()
     }
 
     fun release() {
@@ -207,5 +228,8 @@ class PlaybackController(context: Context, private val listener: Listener) {
         player.release()
     }
 
-    companion object { private const val KEY_END_MODE = "endMode" }
+    companion object {
+        private const val KEY_END_MODE = "endMode"
+        private const val KEY_AUDIO_BACKEND = "audioBackend"
+    }
 }

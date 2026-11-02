@@ -100,3 +100,34 @@ The Android build workflow now uses only `workflow_dispatch`, not automatic
 Android build → Run workflow** and select a branch. Build locally with
 `./gradlew :app:assembleDebug :app:testDebugUnitTest` (PowerShell:
 `.\\gradlew.bat :app:assembleDebug :app:testDebugUnitTest`).
+
+## Iteration 02D — precise speed and audio backend listening test
+
+- Tap the **centered 1.00×** speed text to open a numeric keyboard and enter a
+  speed percentage **25–150** (e.g. `85` means 0.85×). The slider and Reset
+  button use the same value; non-integer/out-of-range input is rejected.
+- When a track name contains a valid BPM prefix, the player shows its source
+  tempo and adjusted tempo at non-default speeds: e.g. `Filename BPM: 128 →
+  102.4 BPM` at 0.80×. This is a mathematical tempo adjustment, **not** a
+  newly measured BPM; without a filename BPM, the BPM row stays hidden.
+- The **Audio** button offers two playback paths: **Sonic (default)**, the
+  current Media3 time-stretcher, and **Android mixer (experimental)**, which
+  asks the device AudioTrack mixer to change speed instead. Some devices may
+  not support all speeds, and Android mixer is *not* necessarily higher quality.
+  The selection is stored and takes effect on the **next application launch**.
+  The button shows `(switch pending)` until a restart; choosing a mode does not
+  interrupt an ongoing track or reset A/B markers.
+
+### Listening comparison (0.8×–1.1×)
+
+1. Use the same locally stored rhythmic track and headphones for both modes.
+2. Test 80%, 90%, 100%, and 110% using the exact percentage input. Listen for
+   drum transient smearing, vocal warbling, missing beats, and dropouts.
+3. Switch Audio mode and restart the app, then select the same track and repeat.
+4. If Android mixer rejects a speed or sounds worse, return to Sonic.
+
+Neither route is yet a replacement high-quality time-stretch DSP engine.
+Candidate native libraries include Rubber Band (GPL/commercial dual licence)
+and SoundTouch (LGPL 2.1); both need dedicated integration and license review.
+
+CI remains **manual-only**; no runs are triggered by pushes or pull requests.

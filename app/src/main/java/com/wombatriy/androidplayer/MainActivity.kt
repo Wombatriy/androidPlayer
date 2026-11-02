@@ -45,6 +45,7 @@ class MainActivity : Activity() {
                 playerScreen.updatePosition(positionMs, durationMs)
             override fun onLoopChanged() = playerScreen.updateLoop()
             override fun onPlaybackError(message: String) = playerScreen.showPlaybackError(message)
+            override fun onSpeedChanged() = playerScreen.refreshSpeed()
         })
         createLayout()
         if (savedInstanceState != null) {
