@@ -101,33 +101,29 @@ Android build → Run workflow** and select a branch. Build locally with
 `./gradlew :app:assembleDebug :app:testDebugUnitTest` (PowerShell:
 `.\\gradlew.bat :app:assembleDebug :app:testDebugUnitTest`).
 
-## Iteration 02D — precise speed and audio backend listening test
+## Iteration 02D — precise speed and compact controls
 
-- Tap the **centered 1.00×** speed text to open a numeric keyboard and enter a
-  speed percentage **25–150** (e.g. `85` means 0.85×). The slider and Reset
-  button use the same value; non-integer/out-of-range input is rejected.
-- When a track name contains a valid BPM prefix, the player shows its source
-  tempo and adjusted tempo at non-default speeds: e.g. `Filename BPM: 128 →
-  102.4 BPM` at 0.80×. This is a mathematical tempo adjustment, **not** a
-  newly measured BPM; without a filename BPM, the BPM row stays hidden.
-- The **Audio** button offers two playback paths: **Sonic (default)**, the
-  current Media3 time-stretcher, and **Android mixer (experimental)**, which
-  asks the device AudioTrack mixer to change speed instead. Some devices may
-  not support all speeds, and Android mixer is *not* necessarily higher quality.
-  The selection is stored and takes effect on the **next application launch**.
-  The button shows `(switch pending)` until a restart; choosing a mode does not
-  interrupt an ongoing track or reset A/B markers.
+- Tap the **centered speed value** to show an **empty input field**. It is focused
+  immediately and the numeric keyboard opens without a second tap. Enter an
+  integer percentage: `85` = 0.85×.
+- Inputs below **25** clamp to **25**, and inputs above **150** clamp to **150**.
+  No validation errors or pop-up hints appear. Applying a blank value leaves the
+  current speed unchanged.
+- Slider, Reset, speed label, and adjusted BPM use the same percentage.
+- When a track has BPM in the filename, playback at a different speed displays
+  e.g. `Filename BPM: 128 → 102.4 BPM` at 80%. This is a mathematical
+  adjustment, not a measured BPM.
+- Transport buttons are arranged **Prev | −10s | Play/Pause | +10s | Next**
+  in one row, including on narrower phone screens.
 
-### Listening comparison (0.8×–1.1×)
+### Audio processing
 
-1. Use the same locally stored rhythmic track and headphones for both modes.
-2. Test 80%, 90%, 100%, and 110% using the exact percentage input. Listen for
-   drum transient smearing, vocal warbling, missing beats, and dropouts.
-3. Switch Audio mode and restart the app, then select the same track and repeat.
-4. If Android mixer rejects a speed or sounds worse, return to Sonic.
+The experimental **Android mixer** backend was removed after phone listening
+revealed crackling. **Media3/Sonic remains the default**, including if the old
+experimental mode had been selected previously. A dedicated high-quality
+real-time time-stretch engine is deferred to the **final roadmap stage**,
+after BPM, playlists, queue, waveform, and lock-screen features. The
+quality-sensitive speed range is **0.8×–1.1×**.
 
-Neither route is yet a replacement high-quality time-stretch DSP engine.
-Candidate native libraries include Rubber Band (GPL/commercial dual licence)
-and SoundTouch (LGPL 2.1); both need dedicated integration and license review.
-
-CI remains **manual-only**; no runs are triggered by pushes or pull requests.
+GitHub Actions remains manual-only; use Android Studio or
+`./gradlew :app:assembleDebug :app:testDebugUnitTest` to build and test locally.

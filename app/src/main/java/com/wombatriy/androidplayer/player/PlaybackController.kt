@@ -25,10 +25,7 @@ class PlaybackController(context: Context, private val listener: Listener) {
     }
 
     private val prefs = context.getSharedPreferences("playback", Context.MODE_PRIVATE)
-    /** Applied to the currently running player; changing preference requires a restart. */
-    val audioBackend: AudioBackend = readAudioBackend()
-    val preferredAudioBackend: AudioBackend get() = readAudioBackend()
-    private val player = AudioEngineFactory.create(context, audioBackend)
+    private val player = ExoPlayer.Builder(context).build()
     private val queue = PlaybackQueue<Track>()
     private val handler = Handler(Looper.getMainLooper())
     private var released = false
@@ -86,7 +83,7 @@ class PlaybackController(context: Context, private val listener: Listener) {
             }
 
             override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
-                // A device's mixer may reject a requested speed. Reflect the effective value.
+                // Reflect Media3's accepted playback speed in the UI.
                 listener.onSpeedChanged()
             }
 
@@ -212,24 +209,11 @@ class PlaybackController(context: Context, private val listener: Listener) {
         listener.onSpeedChanged()
     }
 
-    private fun readAudioBackend(): AudioBackend =
-        runCatching {
-            AudioBackend.valueOf(prefs.getString(KEY_AUDIO_BACKEND, AudioBackend.SONIC.name) ?: AudioBackend.SONIC.name)
-        }.getOrDefault(AudioBackend.SONIC)
-
-    /** Saves the preferred backend without interrupting playback. Effective after relaunch. */
-    fun chooseAudioBackendForNextLaunch(backend: AudioBackend) {
-        prefs.edit().putString(KEY_AUDIO_BACKEND, backend.name).apply()
-    }
-
     fun release() {
         released = true
         handler.removeCallbacks(ticker)
         player.release()
     }
 
-    companion object {
-        private const val KEY_END_MODE = "endMode"
-        private const val KEY_AUDIO_BACKEND = "audioBackend"
-    }
+    companion object { private const val KEY_END_MODE = "endMode" }
 }

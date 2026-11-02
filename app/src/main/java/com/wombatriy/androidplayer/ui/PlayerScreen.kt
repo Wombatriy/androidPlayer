@@ -3,12 +3,11 @@ package com.wombatriy.androidplayer.ui
 import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Paint
-import android.text.InputFilter
 import android.text.InputType
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
-import android.widget.Toast
 import android.graphics.Color
 import android.view.Gravity
 import android.view.View
@@ -17,7 +16,6 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
-import com.wombatriy.androidplayer.player.AudioBackend
 import com.wombatriy.androidplayer.player.EndMode
 import com.wombatriy.androidplayer.player.TempoMath
 import com.wombatriy.androidplayer.player.PlaybackController
@@ -47,7 +45,6 @@ class PlayerScreen(context: Context, private val playback: PlaybackController) :
         isFocusable = true
         setOnClickListener { showManualSpeedInput() }
     }
-    private val audioBackendButton = context.actionButton("Audio: Sonic") { showAudioBackendPicker() }
     private val speedBar = SeekBar(context)
     private val loopLabel = context.textLine()
     private val controls = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
@@ -84,21 +81,26 @@ class PlayerScreen(context: Context, private val playback: PlaybackController) :
             }
         })
 
-        val seekControls = LinearLayout(context).apply {
+        // Five equally weighted controls remain in one row, even on narrow screens.
+        val transport = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        seekControls.addView(previousButton, LinearLayout.LayoutParams(0, -2, 1f))
-        seekControls.addView(playButton, LinearLayout.LayoutParams(0, -2, 1f))
-        seekControls.addView(nextButton, LinearLayout.LayoutParams(0, -2, 1f))
-        controls.addView(seekControls)
-
-        val jumps = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        jumps.addView(context.actionButton("−10s") { playback.skipBy(-10_000L) },
-            LinearLayout.LayoutParams(0, -2, 1f))
-        jumps.addView(context.actionButton("+10s") { playback.skipBy(10_000L) },
-            LinearLayout.LayoutParams(0, -2, 1f))
-        controls.addView(jumps)
+        fun addTransport(button: Button) {
+            button.minWidth = 0
+            button.minimumWidth = 0
+            button.setPadding(0, 0, 0, 0)
+            button.textSize = 11f
+            transport.addView(button, LinearLayout.LayoutParams(0, -2, 1f))
+        }
+        previousButton.text = "Prev"
+        nextButton.text = "Next"
+        addTransport(previousButton)
+        addTransport(context.actionButton("−10s") { playback.skipBy(-10_000L) })
+        addTransport(playButton)
+        addTransport(context.actionButton("+10s") { playback.skipBy(10_000L) })
+        addTransport(nextButton)
+        controls.addView(transport)
 
         // Tap the centered speed value for precise input in integer percent.
         controls.addView(speedLabel)
@@ -117,11 +119,6 @@ class PlayerScreen(context: Context, private val playback: PlaybackController) :
             setSpeedPercent(TempoMath.DEFAULT_PERCENT)
         })
 
-        controls.addView(audioBackendButton)
-        controls.addView(context.textLine(
-            "Compare Sonic and the Android mixer at 0.80×–1.10×. Switching requires restarting the app.",
-            12f
-        ))
         controls.addView(context.textLine("At track end (A–B loop takes priority)"))
         val modes = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         EndMode.entries.forEach { mode ->
@@ -156,7 +153,6 @@ class PlayerScreen(context: Context, private val playback: PlaybackController) :
         updatePlaybackState()
         updateLoop()
         refreshSpeed()
-        updateBackendLabel()
     }
 
     fun showPlaybackError(message: String) {
@@ -228,10 +224,9 @@ class PlayerScreen(context: Context, private val playback: PlaybackController) :
         val field = EditText(context).apply {
             inputType = InputType.TYPE_CLASS_NUMBER
             imeOptions = EditorInfo.IME_ACTION_DONE
-            filters = arrayOf(InputFilter.LengthFilter(3))
             isSingleLine = true
-            setText(TempoMath.toPercent(playback.speed).toString())
-            selectAll()
+            // Deliberately blank: the user can enter a new speed immediately.
+            setText("")
         }
         val margin = context.dp(20)
         val wrapper = LinearLayout(context).apply {
@@ -241,20 +236,15 @@ class PlayerScreen(context: Context, private val playback: PlaybackController) :
         }
         val dialog = AlertDialog.Builder(context)
             .setTitle("Playback speed (%)")
-            .setMessage("Enter a whole number from 25 to 150. 100 means 1.00×.")
             .setView(wrapper)
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Apply", null)
             .create()
         dialog.setOnShowListener {
-            val applyInput = {
-                val percent = TempoMath.parsePercent(field.text.toString())
-                if (percent == null) {
-                    field.error = "Enter an integer from 25 to 150"
-                } else {
-                    setSpeedPercent(percent)
-                    dialog.dismiss()
-                }
+            fun applyInput() {
+                // 24 -> 25, 160 -> 150; empty input simply keeps the current speed.
+                TempoMath.parseClampedPercent(field.text.toString())?.let(::setSpeedPercent)
+                dialog.dismiss()
             }
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { applyInput() }
             field.setOnEditorActionListener { _, actionId, _ ->
@@ -263,34 +253,14 @@ class PlayerScreen(context: Context, private val playback: PlaybackController) :
                     true
                 } else false
             }
+            field.requestFocus()
+            dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+            field.post {
+                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                imm.showSoftInput(field, InputMethodManager.SHOW_IMPLICIT)
+            }
         }
         dialog.show()
-        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
-    }
-
-    private fun showAudioBackendPicker() {
-        val choices = AudioBackend.entries.toTypedArray()
-        val preferred = playback.preferredAudioBackend
-        AlertDialog.Builder(context)
-            .setTitle("Audio processing (for listening comparisons)")
-            .setSingleChoiceItems(choices.map { it.label }.toTypedArray(), choices.indexOf(preferred)) { dialog, which ->
-                playback.chooseAudioBackendForNextLaunch(choices[which])
-                updateBackendLabel()
-                dialog.dismiss()
-                Toast.makeText(context, "Restart the app to apply the audio engine change", Toast.LENGTH_LONG).show()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun updateBackendLabel() {
-        val active = playback.audioBackend
-        val requested = playback.preferredAudioBackend
-        audioBackendButton.text = if (active == requested) {
-            "Audio: ${active.label}"
-        } else {
-            "Audio: ${active.label} (switch pending)"
-        }
     }
 
     private fun format(ms: Long): String {

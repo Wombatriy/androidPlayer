@@ -4,15 +4,24 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TempoMathTest {
-    @Test fun validPercentageInputs() {
-        assertEquals(25, TempoMath.parsePercent("25"))
-        assertEquals(100, TempoMath.parsePercent(" 100 "))
-        assertEquals(150, TempoMath.parsePercent("150"))
+    @Test fun normalPercentageInputs() {
+        assertEquals(25, TempoMath.parseClampedPercent("25"))
+        assertEquals(100, TempoMath.parseClampedPercent(" 100 "))
+        assertEquals(150, TempoMath.parseClampedPercent("150"))
     }
 
-    @Test fun invalidPercentageInputs() {
-        listOf("", "abc", "24", "151", "-1", "100.5").forEach {
-            assertNull(TempoMath.parsePercent(it))
+    @Test fun outOfBoundsAreClamped() {
+        assertEquals(25, TempoMath.parseClampedPercent("0"))
+        assertEquals(25, TempoMath.parseClampedPercent("24"))
+        assertEquals(150, TempoMath.parseClampedPercent("151"))
+        assertEquals(150, TempoMath.parseClampedPercent("160"))
+        assertEquals(150, TempoMath.parseClampedPercent("999999999999"))
+        assertEquals(100, TempoMath.parseClampedPercent("000100"))
+    }
+
+    @Test fun emptyOrNonNumericMeansNoChange() {
+        listOf("", "  ", "abc", "-1", "100.5").forEach {
+            assertNull(TempoMath.parseClampedPercent(it))
         }
     }
 

@@ -8,8 +8,19 @@ object TempoMath {
     const val MAX_PERCENT = 150
     const val DEFAULT_PERCENT = 100
 
-    fun parsePercent(text: String): Int? =
-        text.trim().toIntOrNull()?.takeIf { it in MIN_PERCENT..MAX_PERCENT }
+    /**
+     * Accept decimal digits and clamp out-of-range integers silently.
+     * Blank or non-numeric text means "keep the current speed" (null).
+     * Leading zeroes are allowed, including very long inputs.
+     */
+    fun parseClampedPercent(text: String): Int? {
+        val raw = text.trim()
+        if (raw.isEmpty() || raw.any { it !in '0'..'9' }) return null
+        val digits = raw.trimStart('0')
+        if (digits.length > 3) return MAX_PERCENT
+        val value = digits.toIntOrNull() ?: 0
+        return value.coerceIn(MIN_PERCENT, MAX_PERCENT)
+    }
 
     fun toSpeed(percent: Int): Float {
         require(percent in MIN_PERCENT..MAX_PERCENT)

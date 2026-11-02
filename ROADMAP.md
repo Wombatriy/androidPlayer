@@ -37,44 +37,29 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [ ] Device verification with thousands of files and restart/force-stop
 - [ ] Later apply same modes to user playlists
 
-## 02D — Speed precision and audio comparison (PR #5)
-- [x] Tap the centered speed value (e.g. 1.00×) to enter an integer **25–150%** via numeric keyboard
-- [x] Keep slider, entered percent, Reset and the speed label synchronized
-- [x] Show **filename BPM → effective BPM** whenever playback speed differs from 1.00×
-- [x] Expose controlled comparison of built-in Media3 Sonic with experimental Android AudioTrack mixer; selection applies on next app launch
-- [x] Validate BPM and percent rounding with JVM unit tests
-- [ ] **Prioritize sound fidelity for 0.8×–1.1×**; 0.25×–0.79× and 1.11×–1.50× can use a faster/less accurate algorithm
-- [ ] User listening comparison of Sonic vs Android mixer at 0.80×, 0.90×, 1.10× (percussion and vocals)
-- [ ] Compare Rubber Band / SoundTouch, checking Android performance, real-time latency and license obligations
-- [ ] Benchmark transitions into/out of high-quality range and looping
-- [ ] Select/implement a proven high-quality processor only after listening comparisons, not from marketing claims alone
-
-## 02E — Waveform
-- [ ] Asynchronously calculate and cache waveform preview
-- [ ] Visually place and adjust markers A/B
-- [ ] Tighten A/B timing to avoid audible transition artifacts
-
-## 02F — Background playback and lock-screen controls
-- [ ] Extract playback from Activity into MediaSessionService
-- [ ] Add a media session / notification for lock-screen and notification shade
-- [ ] Show Play/Pause, Previous and Next on lock-screen media controls
-- [ ] Keep playback working when screen is off or app is backgrounded
-- [ ] Test Bluetooth controls, headset buttons, audio focus and interruptions
-- [ ] Foreground-service permissions and notifications per Android API level
+## 02D — Precise speed and compact transport (PR #5)
+- [x] Tap the centered speed value to enter an integer percentage; start with a blank, focused field and open the numeric keyboard
+- [x] Silently clamp values below 25% to 25% and above 150% to 150%; blank input does not change playback
+- [x] Keep slider, label, Reset and effective BPM synchronized
+- [x] Show filename BPM and resulting BPM at non-default playback speeds
+- [x] Arrange Prev, −10s, Play/Pause, +10s, Next in one compact row
+- [x] Remove the experimental Android mixer backend after device testing revealed crackling; keep Sonic as the stable default
+- [ ] Manual phone verification before merge
 
 ## 03 — Single-track BPM
-- [ ] Parse a leading `BPM - ` from filename first
-- [ ] Analyze BPM if not present, record automatic/manual/filename source
-- [ ] Expose correction buttons ×0.5, ×1.5, ×2, ×4 and tap tempo
+- [ ] Prefer valid leading `BPM - ` in filename
+- [ ] Estimate BPM only if filename has no BPM, store detected/manual/filename source
+- [ ] Manual correction with ×0.5, ×1.5, ×2, ×4 and tap tempo
+- [ ] Persist results and preserve half-/double-tempo ambiguity for human correction
 
 ## 04 — Batch BPM
 - [ ] Automatically process newly added tracks and playlists
 - [ ] Cache BPM, source and confidence; mark rows by source color
-- [ ] Progress, cancel, retry, and batch scheduling
+- [ ] Progress, cancel, retry and batch scheduling
 
 ## 05 — Safe rename
 - [ ] Preview `BPM - Artist - Track.ext`
-- [ ] Explicit confirmation and SAF rename with conflict/error handling
+- [ ] Explicit confirmation, SAF rename, collision handling and error reporting
 
 ## 06 — Playlists
 - [ ] Create/rename/delete playlists
@@ -84,7 +69,26 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 ## 07 — Queue
 - [ ] Fourth tab reflects selected playlist
 - [ ] Reorder with drag handles; select and play any item
-- [ ] Synchronize player controls and playback modes with active queue
+- [ ] Synchronize player controls and end-of-track modes with active queue
+
+## 08 — Waveform (deferred from 02E)
+- [ ] Asynchronously calculate and cache waveform preview
+- [ ] Visually place and adjust A–B markers
+- [ ] Tighten A–B timing to avoid audible transition artifacts
+
+## 09 — Background playback and lock-screen controls (deferred from 02F)
+- [ ] Extract playback from Activity into MediaSessionService
+- [ ] Media notification and lock-screen Play/Pause, Previous and Next
+- [ ] Keep playback alive with screen off / app backgrounded
+- [ ] Test Bluetooth, headsets, audio focus and interruptions
+- [ ] Add permissions and foreground-service behavior for supported Android versions
+
+## 10 — High-quality time-stretch DSP (moved to the end)
+- [ ] Prioritize fidelity for **0.8×–1.1×**; outside that range, current Sonic is acceptable
+- [x] Trial Android audio mixer and Sonic; tester reported audible crackling from mixer, so experimental path was removed
+- [ ] Compare Rubber Band / SoundTouch or another proven DSP with license review
+- [ ] Benchmark latency, CPU, pitch preservation, percussion transients and A–B looping
+- [ ] Integrate a better real-time time-stretch engine only after listening tests
 
 ## Engineering constraints
 - Kotlin, AndroidX Media3, SAF (no blanket storage permission).
