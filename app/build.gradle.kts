@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.wombatriy.androidplayer"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.wombatriy.androidplayer"

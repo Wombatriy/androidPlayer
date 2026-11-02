@@ -24,11 +24,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Install Android SDK 35
+      - name: Install Android SDK 36
         shell: bash
         run: |
           SDKMANAGER="$(command -v sdkmanager || find "$ANDROID_HOME/cmdline-tools" -name sdkmanager | sort -V | tail -1)"
-          "$SDKMANAGER" --install 'platforms;android-35' 'build-tools;35.0.0'
+          "$SDKMANAGER" --install 'platforms;android-36' 'build-tools;35.0.0'
       - name: Set up Gradle and validate wrapper
         uses: gradle/actions/setup-gradle@v4
       - name: Assemble debug APK
