@@ -26,63 +26,86 @@ object BpmFormatting {
             else "${tenths / 10}.${tenths % 10}"
     }
 
-    fun adjusted(value: Double, speed: Float): String =
-        bpm(value * speed)
+    fun adjusted(value: Double, speed: Float): String = bpm(value * speed)
 }
 
 /**
- * Saves per-track metadata by SAF URI. A manual adjustment overrides a BPM
- * prefix; filename BPM overrides a previously detected value.
- *
- * These preferences are for ONE-TRACK analysis in iteration 03. Batch
- * processing can move to a proper indexed database in a later iteration.
+ * Detected and manual values are separate, so comparing an auto-estimate with
+ * filename BPM never changes the preferred value. A deliberate manual override
+ * can still supersede the filename. Reads legacy single-record preferences.
  */
 class BpmRepository(context: Context) {
     private val prefs = context.getSharedPreferences("bpm-results-v1", Context.MODE_PRIVATE)
 
-    fun resolved(track: Track): BpmRecord? {
-        val saved = stored(track)
-        if (saved?.source == BpmSource.MANUAL) return saved
-        track.filenameBpm?.let { return BpmRecord(it.toDouble(), BpmSource.FILENAME) }
-        return saved
+    fun resolved(track: Track): BpmRecord? =
+        manual(track)
+            ?: track.filenameBpm?.let { BpmRecord(it.toDouble(), BpmSource.FILENAME) }
+            ?: detected(track)
+
+    fun manual(track: Track): BpmRecord? =
+        read(track, ".manual")
+            ?: legacy(track)?.takeIf { it.source == BpmSource.MANUAL }
+
+    fun detected(track: Track): BpmRecord? =
+        read(track, ".detected")
+            ?: legacy(track)?.takeIf { it.source == BpmSource.DETECTED }
+
+    fun hasManual(track: Track): Boolean = manual(track) != null
+
+    fun saveManual(track: Track, record: BpmRecord) {
+        require(record.source == BpmSource.MANUAL)
+        save(track, ".manual", record)
     }
 
-    fun stored(track: Track): BpmRecord? {
-        val serialized = prefs.getString(key(track), null) ?: return null
+    fun saveDetected(track: Track, record: BpmRecord) {
+        require(record.source == BpmSource.DETECTED)
+        save(track, ".detected", record)
+    }
+
+    fun clearManual(track: Track) {
+        val base = key(track)
+        val editor = prefs.edit().remove(base + ".manual")
+        if (legacy(track)?.source == BpmSource.MANUAL) editor.remove(base)
+        editor.apply()
+    }
+
+    private fun read(track: Track, suffix: String): BpmRecord? =
+        decode(prefs.getString(key(track) + suffix, null))
+
+    private fun legacy(track: Track): BpmRecord? =
+        decode(prefs.getString(key(track), null))
+
+    private fun decode(serialized: String?): BpmRecord? {
+        if (serialized == null) return null
         return runCatching {
             val json = JSONObject(serialized)
             val value = json.getDouble("bpm")
             require(value in 20.0..800.0 && value.isFinite())
-            val origin = BpmSource.valueOf(json.getString("source"))
+            val source = BpmSource.valueOf(json.getString("source"))
             val confidence = json.optDouble("confidence", Double.NaN).takeIf { it.isFinite() }
             val alternative = json.optDouble("alternative", Double.NaN).takeIf { it.isFinite() }
-            BpmRecord(value, origin, confidence, alternative)
+            BpmRecord(value, source, confidence, alternative)
         }.getOrNull()
     }
 
-    fun save(track: Track, record: BpmRecord) {
-        require(record.bpm in 20.0..800.0 && record.bpm.isFinite())
-        val json = JSONObject()
-            .put("bpm", record.bpm)
-            .put("source", record.source.name)
-        record.confidence?.let { json.put("confidence", it) }
-        record.alternative?.let { json.put("alternative", it) }
-        prefs.edit().putString(key(track), json.toString()).apply()
-    }
-
-    fun clear(track: Track) {
-        prefs.edit().remove(key(track)).apply()
+    private fun save(track: Track, suffix: String, record: BpmRecord) {
+        require(record.bpm.isFinite() && record.bpm in 20.0..800.0)
+        val data = JSONObject().put("bpm", record.bpm).put("source", record.source.name)
+        record.confidence?.let { data.put("confidence", it) }
+        record.alternative?.let { data.put("alternative", it) }
+        prefs.edit().putString(key(track) + suffix, data.toString()).apply()
     }
 
     private fun key(track: Track): String {
         val bytes = MessageDigest.getInstance("SHA-256")
             .digest(track.uri.toString().toByteArray(Charsets.UTF_8))
-        val digits = "0123456789abcdef"
-        val builder = StringBuilder(bytes.size * 2)
-        for (value in bytes) {
-            val unsigned = value.toInt() and 0xff
-            builder.append(digits[unsigned ushr 4]).append(digits[unsigned and 15])
+        val hex = "0123456789abcdef"
+        return buildString(bytes.size * 2) {
+            for (byte in bytes) {
+                val unsigned = byte.toInt() and 0xff
+                append(hex[unsigned ushr 4])
+                append(hex[unsigned and 0x0f])
+            }
         }
-        return builder.toString()
     }
 }

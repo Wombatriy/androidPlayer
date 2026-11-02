@@ -24,13 +24,16 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 /** Retained view: never recreate seekbars or buttons on playback callbacks. */
-class PlayerScreen(context: Context, private val playback: PlaybackController, bpmCoordinator: BpmCoordinator) : ScrollView(context) {
+class PlayerScreen(context: Context, private val playback: PlaybackController, private val bpmCoordinator: BpmCoordinator) : ScrollView(context) {
     private val column = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(context.dp(16), context.dp(12), context.dp(16), context.dp(24))
     }
     private val nameLabel = context.textLine("Choose a track in Library", 18f)
-    private val bpmPanel = BpmPanel(context, bpmCoordinator) { playback.speed }
+    private val bpmSummary = context.textLine("BPM: —", 14f)
+    private var bpmDialog: AlertDialog? = null
+    private var bpmPanel: BpmPanel? = null
+    private val bpmButton = context.actionButton("BPM adjustments") { showBpmDialog() }
     private val queueLabel = context.textLine()
     private val errorLabel = context.textLine()
     private val positionLabel = context.textLine("00:00 / 00:00")
@@ -38,7 +41,7 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, b
     private val playButton = context.actionButton("Play") { playback.togglePlayPause() }
     private val previousButton = context.actionButton("Previous") { playback.previous() }
     private val nextButton = context.actionButton("Next") { playback.next() }
-    private val modeButtons = mutableMapOf<EndMode, Button>()
+    private val modeButton = context.actionButton("⏭") { cycleEndMode() }
     private val speedLabel = context.textLine("1.00×", 24f).apply {
         textAlignment = View.TEXT_ALIGNMENT_CENTER
         setTextColor(Color.rgb(0, 113, 112))
@@ -56,9 +59,8 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, b
         setBackgroundColor(Color.rgb(249, 250, 252))
         addView(column)
 
-        column.addView(context.textLine("Player", 23f))
         column.addView(nameLabel)
-        column.addView(bpmPanel)
+        column.addView(bpmSummary)
         column.addView(queueLabel)
         column.addView(errorLabel)
         column.addView(controls)
@@ -103,8 +105,24 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, b
         addTransport(nextButton)
         controls.addView(transport)
 
-        // Tap the centered speed value for precise input in integer percent.
-        controls.addView(speedLabel)
+        // Center the speed value while keeping Reset as a small right-side action.
+        val speedHeading = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        speedHeading.addView(View(context), LinearLayout.LayoutParams(context.dp(44), 1))
+        speedHeading.addView(speedLabel, LinearLayout.LayoutParams(0, -2, 1f))
+        speedHeading.addView(context.actionButton("↺") {
+            setSpeedPercent(TempoMath.DEFAULT_PERCENT)
+        }.apply {
+            contentDescription = "Reset speed to 1.00×"
+            textSize = 20f
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(0, 0, 0, 0)
+        }, LinearLayout.LayoutParams(context.dp(44), context.dp(40)))
+        controls.addView(speedHeading)
+
         speedBar.max = TempoMath.MAX_PERCENT - TempoMath.MIN_PERCENT
         speedBar.progress = TempoMath.toPercent(playback.speed) - TempoMath.MIN_PERCENT
         speedBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -115,37 +133,44 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, b
             override fun onStopTrackingTouch(bar: SeekBar) = Unit
         })
         controls.addView(speedBar)
-        controls.addView(SpeedRulerView(context), LinearLayout.LayoutParams(-1, context.dp(58)))
-        controls.addView(context.actionButton("Reset speed to 1.00×") {
-            setSpeedPercent(TempoMath.DEFAULT_PERCENT)
-        })
+        controls.addView(SpeedRulerView(context), LinearLayout.LayoutParams(-1, context.dp(36)))
 
-        controls.addView(context.textLine("At track end (A–B loop takes priority)"))
-        val modes = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        EndMode.entries.forEach { mode ->
-            val button = context.actionButton(mode.caption) { playback.selectEndMode(mode) }
-            modeButtons[mode] = button
-            modes.addView(button, LinearLayout.LayoutParams(0, -2, 1f))
+        // End-of-track mode and A–B loop share one compact row.
+        val loopControls = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
         }
-        controls.addView(modes)
-
-        controls.addView(loopLabel)
-        val loopControls = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        loopControls.addView(context.actionButton("Set A") { playback.setA() },
-            LinearLayout.LayoutParams(0, -2, 1f))
-        loopControls.addView(context.actionButton("Set B") { playback.setB() },
-            LinearLayout.LayoutParams(0, -2, 1f))
-        loopControls.addView(context.actionButton("Clear A–B") { playback.clearLoop() },
-            LinearLayout.LayoutParams(0, -2, 1f))
+        fun addSmallControl(button: Button) {
+            button.minWidth = 0
+            button.minimumWidth = 0
+            button.textSize = 17f
+            button.setPadding(0, 0, 0, 0)
+            loopControls.addView(button, LinearLayout.LayoutParams(0, context.dp(44), 1f))
+        }
+        addSmallControl(modeButton)
+        addSmallControl(context.actionButton("A") { playback.setA() }.apply {
+            contentDescription = "Set loop point A"
+        })
+        addSmallControl(context.actionButton("B") { playback.setB() }.apply {
+            contentDescription = "Set loop point B"
+        })
+        addSmallControl(context.actionButton("🗑") { playback.clearLoop() }.apply {
+            contentDescription = "Clear A–B loop"
+        })
         controls.addView(loopControls)
+        controls.addView(loopLabel)
+        bpmButton.isAllCaps = false
+        controls.addView(bpmButton)
+        updatePlaybackState()
 
         refreshTrack()
     }
 
     fun refreshTrack() {
+        bpmDialog?.dismiss()
         val track = playback.currentTrack
         nameLabel.text = track?.name ?: "Choose a track in Library"
-        bpmPanel.refresh()
+        refreshBpm()
         queueLabel.text = if (track != null) "Track ${playback.queuePosition + 1} of ${playback.queueSize}" else ""
         queueLabel.visibility = if (track == null) View.GONE else View.VISIBLE
         errorLabel.visibility = View.GONE
@@ -177,22 +202,27 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, b
         if (playButton.text != expected) playButton.text = expected
         previousButton.isEnabled = playback.hasPrevious
         nextButton.isEnabled = playback.hasNext
-        for ((mode, button) in modeButtons) {
-            val selected = mode == playback.endMode
-            button.setTextColor(if (selected) Color.rgb(0, 110, 110) else Color.rgb(45, 50, 55))
-            button.setTypeface(null, if (selected) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+        modeButton.text = when (playback.endMode) {
+            EndMode.STOP -> "⏹"
+            EndMode.NEXT -> "⏭"
+            EndMode.REPEAT -> "🔁"
         }
+        modeButton.contentDescription = "After track: ${playback.endMode.caption}. Tap to change."
+        modeButton.tooltipText = "After track: ${playback.endMode.caption}"
     }
 
     fun updateLoop() {
         val a = playback.pointA
         val b = playback.pointB
-        val state = when {
-            a == null || b == null -> "Loop inactive"
-            b <= a -> "Set B after A to enable looping"
-            else -> "A–B loop active"
+        loopLabel.visibility = if (a == null && b == null) View.GONE else View.VISIBLE
+        loopLabel.text = buildString {
+            if (a != null) append("A ${format(a)}")
+            if (b != null) {
+                if (isNotEmpty()) append("    ")
+                append("B ${format(b)}")
+            }
+            if (a != null && b != null && b <= a) append("  (B ≤ A)")
         }
-        loopLabel.text = "A = ${a?.let(::format) ?: "unset"}    B = ${b?.let(::format) ?: "unset"}\n$state"
     }
 
     /** Called after slider, keyboard and Media3 playback-parameter changes. */
@@ -202,10 +232,51 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, b
         if (speedBar.progress != newProgress) speedBar.progress = newProgress
         speedLabel.text = String.format(Locale.US, "%.2f×", playback.speed)
         speedLabel.contentDescription = "Playback speed $percent percent. Tap to enter manually."
-        bpmPanel.refresh()
+        refreshBpm()
     }
 
-    fun refreshBpm() = bpmPanel.refresh()
+    fun refreshBpm() {
+        val result = bpmCoordinator.resolved()
+        val adjusted = if (result != null && kotlin.math.abs(playback.speed - 1f) > 0.001f) {
+            " → ${com.wombatriy.androidplayer.bpm.BpmFormatting.adjusted(result.bpm, playback.speed)}"
+        } else ""
+        bpmSummary.text = if (result == null) {
+            if (bpmCoordinator.analyzing) "BPM: detecting…" else "BPM: —"
+        } else {
+            "BPM ${com.wombatriy.androidplayer.bpm.BpmFormatting.bpm(result.bpm)}" +
+                " (${result.source.caption})$adjusted"
+        }
+        bpmPanel?.refresh()
+    }
+
+    private fun cycleEndMode() {
+        val modes = EndMode.entries
+        val next = modes[(modes.indexOf(playback.endMode) + 1) % modes.size]
+        playback.selectEndMode(next)
+    }
+
+    private fun showBpmDialog() {
+        if (playback.currentTrack == null || bpmDialog != null) return
+        val content = BpmPanel(context, bpmCoordinator) { playback.speed }
+        val scroll = ScrollView(context).apply {
+            isFillViewport = true
+            addView(content)
+        }
+        bpmPanel = content
+        val dialog = AlertDialog.Builder(context)
+            .setTitle("BPM adjustments")
+            .setView(scroll)
+            .setPositiveButton("Close", null)
+            .create()
+        dialog.setOnDismissListener {
+            bpmCoordinator.stopTapSession()
+            bpmDialog = null
+            bpmPanel = null
+        }
+        bpmDialog = dialog
+        bpmCoordinator.beginTapSession()
+        dialog.show()
+    }
 
     private fun setSpeedPercent(percent: Int) {
         playback.setSpeed(TempoMath.toSpeed(percent))

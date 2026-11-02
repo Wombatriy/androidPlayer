@@ -128,60 +128,58 @@ quality-sensitive speed range is **0.8×–1.1×**.
 GitHub Actions remains manual-only; use Android Studio or
 `./gradlew :app:assembleDebug :app:testDebugUnitTest` to build and test locally.
 
-## Iteration 03 — single-track BPM analysis
+## Iteration 03 — single-track BPM analysis and compact Player
 
-This is an early, deliberately limited BPM estimator. The selected track's BPM
-is read in this order: **manual override → BPM prefix in filename → saved
-automatically detected BPM**. Automatic analysis is offered only when no BPM
-prefix exists; the app does not overwrite or rename audio files.
+BPM detection starts **automatically** when you select a track for the first
+time, including tracks with a BPM prefix in their filename. A saved detected
+estimate is reused on later playback; **Detect again** in the BPM window
+reruns the analysis. Android MediaExtractor/MediaCodec decodes at most 70 s
+on a worker thread while music continues. BeatEstimator uses an onset-energy
+autocorrelation: it is a useful estimate but can confuse half/double tempo,
+complex swing, quiet intros or weak percussion.
 
-When a track has no BPM, open **Player → Detect BPM**. On a background thread,
-Android's MediaExtractor/MediaCodec decodes up to 70 seconds of local audio into
-a small 100-Hz RMS-energy envelope. Pure Kotlin autocorrelation estimates the
-attack repetition period. The app continues playing while analysis runs and
-stores the estimate (plus source, confidence and a possible half/double
-alternative) in app-private preferences. Decoding resources are closed on
-completion, cancellation or error.
+The Player screen now shows only a **compact BPM summary**. The **BPM
+adjustments** button below the loop controls opens a scrollable dialog with
+the full controls:
 
-**Estimates are approximate**: intros, syncopation, halftime/double-time,
-swing, low percussion levels and tempo changes can confuse simple onset-energy
-autocorrelation. The result is explicitly marked as *detected (estimate)*.
-Check against known tempos before relying on it for DJ mixing.
+- **Filename BPM**, **Detected BPM**, **Manual BPM** are shown separately.
+  The active BPM is filename-first by default. A deliberate manual correction
+  overrides the filename; detection alone never overrides it.
+- **Detect again**, **Enter BPM**, **×0.5 / ×1.5 / ×2 / ×4**, and **Clear manual
+  override** are available in the dialog.
+- **Tap BPM** uses a monotonic nanosecond timestamp for every tap. Each
+  inter-tap interval is inserted into a **sorted ascending list**. After at
+  least **9 taps / 8 intervals**, the fastest 25% and slowest 25% are discarded
+  and the arithmetic average of the middle 50% produces BPM. Additional taps
+  refine the estimate. Accidental double taps and missed beats tend to be
+  rejected as outliers.
+- The tap sequence resets when the BPM window closes. It also resets after
+  **3 seconds without taps**, immediately showing an explanatory message.
+  A completed Tap BPM measurement is saved as a manual override.
 
-The Player BPM panel also provides:
+Other Player controls are shortened to fit a normal phone screen:
+**Prev | −10s | Play/Pause | +10s | Next** remain one row; playback end mode
+cycles **⏹ Stop → ⏭ Next → 🔁 Repeat** via one icon button. The A–B row has
+compact **A**, **B**, and **🗑 Clear** buttons. Redundant `At track end` and
+`Loop inactive` text is removed, and the speed ruler is shorter.
 
-- Multipliers **×0.5, ×1.5, ×2, ×4** to correct perceived metrical levels.
-- **Tap BPM**: tap three or more times on beats, using monotonic timestamps.
-- **Enter BPM** for exact manual input between 20 and 800.
-- **Reset BPM**: clear the stored override/estimate, returning to the filename
-  BPM if present.
-- Show the effective tempo at non-1.0× playback speed, without modifying the
-  original BPM record.
+### Device verification
 
-Results are keyed by the selected file's content URI. If a file is moved or
-renamed and receives a new URI, its stored result may no longer apply. Batch
-analysis, library-row status colors, confidence-driven reanalysis and file
-renaming remain future iterations.
+1. Open a file `128 - Artist - Track.mp3`: **Filename 128** must remain
+   active even after automatic detection finishes. In BPM adjustments,
+   **Detected** should appear separately; Detect again must work.
+2. Open a file without BPM: an estimate should appear automatically without
+   blocking playback. Reopen it: its saved result should display immediately.
+3. In Tap BPM, make at least **9 taps** at ~120 BPM. Deliberately tap once too
+   early and skip one beat; the middle-window average should stay near 120.
+4. Wait idle for 3 seconds: the tap window clears with a message. Close and
+   reopen the dialog: it starts empty.
+5. Apply ×0.5 or Enter BPM and check the explicit manual override wins.
+   Clear it: the filename value returns, or detected if no filename exists.
+6. Confirm all main Player controls fit without scrolling on your phone.
 
-### Manual verification on phone
+Playlists will later be **ordered cached URI lists** (not automatically sorted
+or copied music). Background MediaSessionService is planned to keep playback
+running after Android Back closes the Activity, with lock-screen controls.
 
-1. Test a track whose name begins with `128 - `; it should show 128 (filename)
-   and not require automatic analysis.
-2. Test an MP3 or FLAC without a BPM prefix. Tap **Detect BPM** and check the
-   estimate against a known tempo. Music playback should continue.
-3. Use ×0.5, ×1.5, ×2, ×4, Tap BPM and Enter BPM; reopen the app and verify
-   that a manual correction persists.
-4. Reset BPM; verify the filename value returns if the filename has one, or
-   that the estimate is cleared for a track without a BPM prefix.
-5. Change speed to 0.80×; verify the effective displayed BPM updates while the
-   original value remains unchanged.
-6. Change tracks while an analysis is running; results from the previous task
-   must not overwrite the current track's UI.
-
-The revised roadmap stores playlists as **ordered local URI lists** without
-sorting or copying the underlying audio. A future MediaSessionService must
-keep audio playing when Android Back closes the Activity and expose lock-screen
-transport controls.
-
-GitHub Actions stays **manual-only**. Test compilation locally with
-`./gradlew :app:assembleDebug :app:testDebugUnitTest`.
+GitHub Actions remains manual-only and has not been dispatched for this PR.

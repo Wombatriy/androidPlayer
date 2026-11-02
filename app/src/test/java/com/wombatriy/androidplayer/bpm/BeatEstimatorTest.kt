@@ -44,24 +44,83 @@ class BeatEstimatorTest {
 }
 
 class TapTempoTest {
-    @Test fun threeTapsGive120Bpm() {
+    private val beatNanos = 500_000_000L // 120 BPM
+
+    private fun measurement(intervals: List<Long>): TapTempo.Reading {
         val tap = TapTempo()
-        assertNull(tap.tap(1000))
-        assertNull(tap.tap(1500))
-        assertEquals(120.0, tap.tap(2000)!!, 0.01)
+        var time = 1_000_000_000L
+        tap.tap(time)
+        var result: TapTempo.Reading? = null
+        for (interval in intervals) {
+            time += interval
+            result = tap.tap(time)
+        }
+        return result!!
     }
 
-    @Test fun longPauseResetsTapSequence() {
+    @Test fun nineTapsRequiredBeforeAnyEstimate() {
         val tap = TapTempo()
-        tap.tap(1000); tap.tap(1500); tap.tap(2000)
-        assertNull(tap.tap(8000))
-        assertNull(tap.tap(8600))
-        assertEquals(100.0, tap.tap(9200)!!, 0.01)
+        var time = 1_000_000_000L
+        assertNull(tap.tap(time).bpm)
+        repeat(7) {
+            time += beatNanos
+            assertNull(tap.tap(time).bpm)
+        }
+        time += beatNanos
+        val estimate = tap.tap(time)
+        assertEquals(8, estimate.intervals)
+        assertEquals(120.0, estimate.bpm!!, 0.01)
     }
 
-    @Test fun medianReducesMistimedTapImpact() {
+    @Test fun averageOfSortedMiddleRejectsEarlyAndMissedTaps() {
+        val intervals = listOf(
+            500_000_000L, 500_000_000L, 100_000_000L, // accidental double-tap
+            500_000_000L, 500_000_000L, 1_000_000_000L, // missed beat
+            500_000_000L, 500_000_000L, 510_000_000L, 490_000_000L
+        )
+        val sample = measurement(intervals)
+        assertEquals(120.0, sample.bpm!!, 0.1)
+    }
+
+    @Test fun trimmedWindowKeepsMedianTimingDespiteUnevenHands() {
+        val intervals = listOf(
+            470_000_000L, 530_000_000L, 490_000_000L,
+            510_000_000L, 500_000_000L, 495_000_000L,
+            505_000_000L, 700_000_000L
+        )
+        assertEquals(120.0, measurement(intervals).bpm!!, 2.0)
+    }
+
+    @Test fun silenceForThreeSecondsResetsWindow() {
         val tap = TapTempo()
-        listOf(0L, 500L, 1000L, 1520L, 2020L).forEach { tap.tap(it) }
-        assertEquals(120.0, tap.tap(2520)!!, 3.0)
+        var time = 1_000_000_000L
+        repeat(9) {
+            tap.tap(time)
+            time += beatNanos
+        }
+        val latest = time - beatNanos
+        assertFalse(tap.clearIfTimedOut(latest + TapTempo.TIMEOUT_NS - 1))
+        assertTrue(tap.clearIfTimedOut(latest + TapTempo.TIMEOUT_NS))
+        assertEquals(0, tap.intervalCount)
+        assertNull(tap.tap(latest + TapTempo.TIMEOUT_NS + 1).bpm)
+    }
+
+    @Test fun lateTapRestartsImmediately() {
+        val tap = TapTempo()
+        tap.tap(1_000_000_000L)
+        tap.tap(1_500_000_000L)
+        val sample = tap.tap(5_000_000_000L)
+        assertTrue(sample.restartedAfterPause)
+        assertEquals(0, sample.intervals)
+        assertNull(sample.bpm)
+    }
+
+    @Test fun explicitResetClearsAllSortedIntervals() {
+        val tap = TapTempo()
+        tap.tap(1_000_000_000L)
+        tap.tap(1_400_000_000L)
+        tap.reset()
+        assertEquals(0, tap.intervalCount)
+        assertNull(tap.tap(2_000_000_000L).bpm)
     }
 }

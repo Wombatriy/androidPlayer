@@ -47,14 +47,17 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [x] Manual phone verification reported successful
 
 ## 03 — Single-track BPM (PR #6)
-- [x] Use the filename BPM prefix when present; no redundant automatic analysis
+- [x] Automatically estimate on first selection even when filename BPM exists; reuse a saved estimate and allow Detect again
 - [x] Detect BPM from a single selected audio file via MediaExtractor/MediaCodec on a worker thread
 - [x] Compute a first-pass attack-envelope autocorrelation estimate over at most 70 seconds
-- [x] Preserve filename/detected/manual source, correction and confidence across launches
-- [x] Manual correction: ×0.5, ×1.5, ×2, ×4, enter BPM and Tap Tempo
+- [x] Store filename, detected and manual sources independently for side-by-side comparison; default to filename unless manually overridden
+- [x] Keep detection, Tap Tempo, direct input and multipliers inside a dismissible BPM adjustments dialog
 - [x] Present half/double-tempo alternative and avoid claiming an estimate is exact
 - [x] Keep adjusted playback BPM synchronized with actual speed
-- [x] Add JVM tests for synthetic rhythms and tap tempo
+- [x] Tap Tempo: ordered nanosecond intervals, drop fastest/slowest 25%, average middle 50% after 9 taps
+- [x] Reset the tap window on dialog close or after 3 seconds idle with a message
+- [x] Compact Player: one mode icon, A/B/trash loop controls, shorter speed ruler; no redundant labels
+- [x] JVM tests for synthetic rhythms, trimmed tap window and missed/double taps
 - [ ] Validate detection quality on real swing/jazz/pop/dance tracks on a phone
 - [ ] Consider spectral-flux or a more accurate onset model if rhythmic confidence is low
 

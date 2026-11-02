@@ -9,82 +9,94 @@ import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.TextView
 import com.wombatriy.androidplayer.bpm.BpmCoordinator
 import com.wombatriy.androidplayer.bpm.BpmFormatting
-import com.wombatriy.androidplayer.bpm.BpmSource
+import com.wombatriy.androidplayer.bpm.BpmRecord
+import com.wombatriy.androidplayer.bpm.TapTempo
 import kotlin.math.abs
 
 /**
- * A small standalone BPM widget, independent of transport, A–B and audio state.
- * All callbacks operate on the current track through BpmCoordinator.
+ * Full BPM adjustment controls, displayed only inside the BPM dialog.
+ * The Player keeps just a compact BPM summary and an 'Adjustments' button.
  */
 class BpmPanel(
     context: Context,
     private val bpm: BpmCoordinator,
     private val speedProvider: () -> Float
 ) : LinearLayout(context) {
-    private val headline = context.textLine("BPM: unknown", 16f).apply {
+    private val active = context.textLine("", 16f).apply {
         setTextColor(Color.rgb(16, 120, 105))
     }
+    private val filename = context.textLine("", 13f)
+    private val detected = context.textLine("", 13f)
+    private val manual = context.textLine("", 13f)
     private val detail = context.textLine("", 12f)
-    private val analyzeButton = context.actionButton("Detect BPM") { bpm.analyze() }
+    private val analyzeButton = context.actionButton("Detect again") { bpm.analyze(force = true) }
     private val tapButton = context.actionButton("Tap BPM") { bpm.tap() }
     private val manualButton = context.actionButton("Enter BPM") { enterBpm() }
-    private val corrections = listOf(
+    private val multipliers = listOf(
         "×0.5" to 0.5, "×1.5" to 1.5, "×2" to 2.0, "×4" to 4.0
-    ).map { (caption, factor) ->
-        context.actionButton(caption) { bpm.multiply(factor) }
+    ).map { (label, factor) ->
+        context.actionButton(label) { bpm.multiply(factor) }
     }
-    private val resetButton = context.actionButton("Reset BPM") { bpm.reset() }
+    private val resetButton = context.actionButton("Clear manual override") { bpm.reset() }
 
     init {
         orientation = VERTICAL
-        addView(headline)
-        val mainControls = LinearLayout(context).apply { orientation = HORIZONTAL }
+        setPadding(context.dp(14), context.dp(8), context.dp(14), context.dp(10))
+        addView(active)
+        addView(filename)
+        addView(detected)
+        addView(manual)
+
+        val actions = LinearLayout(context).apply { orientation = HORIZONTAL }
         listOf(analyzeButton, tapButton, manualButton).forEach { button ->
             compact(button)
-            mainControls.addView(button, LayoutParams(0, -2, 1f))
+            actions.addView(button, LayoutParams(0, -2, 1f))
         }
-        addView(mainControls)
+        addView(actions)
 
-        val multiplierControls = LinearLayout(context).apply { orientation = HORIZONTAL }
-        corrections.forEach { button ->
+        val correctionRow = LinearLayout(context).apply { orientation = HORIZONTAL }
+        multipliers.forEach { button ->
             compact(button)
-            multiplierControls.addView(button, LayoutParams(0, -2, 1f))
+            correctionRow.addView(button, LayoutParams(0, -2, 1f))
         }
-        addView(multiplierControls)
+        addView(correctionRow)
         compact(resetButton)
         addView(resetButton)
+        addView(context.textLine(
+            "Tap ${TapTempo.REQUIRED_TAPS} or more times: average the middle 50% of sorted inter-tap intervals.",
+            12f
+        ))
         addView(detail)
         refresh()
     }
 
     fun refresh() {
-        val track = bpm.track
-        visibility = if (track == null) GONE else VISIBLE
-        if (track == null) return
-        val result = bpm.resolved()
+        val chosen = bpm.resolved()
         val speed = speedProvider()
-        val adjusted = if (result != null && abs(speed - 1.0f) > 0.001f) {
-            " → ${BpmFormatting.adjusted(result.bpm, speed)} BPM"
+        val adjusted = if (chosen != null && abs(speed - 1f) > 0.001f) {
+            " → ${BpmFormatting.adjusted(chosen.bpm, speed)} BPM"
         } else ""
-        headline.text = if (result == null) "BPM: unknown" else {
-            "BPM: ${BpmFormatting.bpm(result.bpm)} (${result.source.caption})$adjusted"
+        active.text = if (chosen == null) "Active BPM: unknown" else
+            "Active BPM: ${BpmFormatting.bpm(chosen.bpm)} (${chosen.source.caption})$adjusted"
+        filename.text = "Filename: ${bpm.filenameBpm()?.toString() ?: "—"}"
+        val estimate = bpm.detected()
+        detected.text = when {
+            bpm.analyzing -> "Detected: analyzing audio…"
+            estimate == null -> "Detected: —"
+            else -> {
+                val alt = estimate.alternative?.let { " (alternate: ${BpmFormatting.bpm(it)})" } ?: ""
+                "Detected: ${BpmFormatting.bpm(estimate.bpm)} BPM$alt"
+            }
         }
-
-        val alternative = if (result?.source == BpmSource.DETECTED) {
-            result.alternative?.let { "Possible half/double tempo: ${BpmFormatting.bpm(it)} BPM." }
-        } else null
-        detail.text = listOfNotNull(bpm.message, alternative).joinToString("\n")
-        detail.visibility = if (detail.text.isBlank()) GONE else VISIBLE
-
-        analyzeButton.text = if (bpm.analyzing) "Analyzing…" else "Detect BPM"
-        analyzeButton.isEnabled = !bpm.analyzing && track.filenameBpm == null
-        tapButton.isEnabled = !bpm.analyzing
-        manualButton.isEnabled = !bpm.analyzing
-        corrections.forEach { it.isEnabled = result != null && !bpm.analyzing }
-        resetButton.visibility = if (bpm.hasStoredValue() && !bpm.analyzing) VISIBLE else GONE
+        manual.text = "Manual: ${bpm.manual()?.let { BpmFormatting.bpm(it.bpm) } ?: "—"}"
+        detail.text = bpm.message ?: ""
+        detail.visibility = if (detail.text.isBlank()) View.GONE else View.VISIBLE
+        analyzeButton.isEnabled = !bpm.analyzing
+        analyzeButton.text = if (bpm.analyzing) "Analyzing…" else "Detect again"
+        multipliers.forEach { it.isEnabled = chosen != null }
+        resetButton.visibility = if (bpm.hasManual()) View.VISIBLE else View.GONE
     }
 
     private fun compact(button: Button) {
@@ -92,7 +104,6 @@ class BpmPanel(
         button.minimumWidth = 0
         button.textSize = 11f
         button.setPadding(0, 0, 0, 0)
-        button.isAllCaps = false
     }
 
     private fun enterBpm() {
@@ -100,6 +111,7 @@ class BpmPanel(
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
             imeOptions = EditorInfo.IME_ACTION_DONE
             hint = "e.g. 128 or 127.5"
+            isSingleLine = true
         }
         val pad = context.dp(18)
         val wrapper = LinearLayout(context).apply {
@@ -116,7 +128,7 @@ class BpmPanel(
         dialog.setOnShowListener {
             fun save() {
                 val value = field.text.toString().replace(',', '.').toDoubleOrNull()
-                if (value == null || value !in 20.0..800.0 || !value.isFinite()) {
+                if (value == null || !value.isFinite() || value !in 20.0..800.0) {
                     field.error = "Enter BPM between 20 and 800"
                 } else {
                     bpm.setManual(value)
@@ -124,8 +136,8 @@ class BpmPanel(
                 }
             }
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { save() }
-            field.setOnEditorActionListener { _, id, _ ->
-                if (id == EditorInfo.IME_ACTION_DONE) { save(); true } else false
+            field.setOnEditorActionListener { _, action, _ ->
+                if (action == EditorInfo.IME_ACTION_DONE) { save(); true } else false
             }
             field.requestFocus()
         }
