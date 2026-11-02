@@ -36,4 +36,4 @@ jobs:
           # local.properties contains a developer-specific SDK path when committed.
           rm -f local.properties
           chmod +x gradlew
-          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          ./gradlew :app:assembleDebug :app:testDebugUnitTest --no-daemon --stacktrace
