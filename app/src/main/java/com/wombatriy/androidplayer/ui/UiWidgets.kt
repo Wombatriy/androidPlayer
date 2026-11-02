@@ -8,7 +8,7 @@ import kotlin.math.roundToInt
 internal fun Context.dp(value: Int): Int =
     (value * resources.displayMetrics.density).roundToInt()
 
-internal fun Context.textLine(textValue: String, textSizeSp: Float = 15f): TextView =
+internal fun Context.textLine(textValue: String = "", textSizeSp: Float = 15f): TextView =
     TextView(this).apply {
         text = textValue
         textSize = textSizeSp

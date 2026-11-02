@@ -27,7 +27,7 @@ class LibraryScreen(
         dividerHeight = context.dp(1)
         setBackgroundColor(Color.WHITE)
         isFastScrollEnabled = true
-        setOnItemClickListener { _, _, position, _ -> onTrackSelected(adapter.getItem(position)) }
+        setOnItemClickListener { _, _, position, _ -> onTrackSelected(this@LibraryScreen.adapter.getItem(position)) }
     }
     private val info = context.textLine("Choose a music folder to begin.", 13f)
     private var restoreIndex: Int? = null
