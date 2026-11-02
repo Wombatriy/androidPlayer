@@ -16,6 +16,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
+import com.wombatriy.androidplayer.bpm.BpmCoordinator
 import com.wombatriy.androidplayer.player.EndMode
 import com.wombatriy.androidplayer.player.TempoMath
 import com.wombatriy.androidplayer.player.PlaybackController
@@ -23,13 +24,13 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 /** Retained view: never recreate seekbars or buttons on playback callbacks. */
-class PlayerScreen(context: Context, private val playback: PlaybackController) : ScrollView(context) {
+class PlayerScreen(context: Context, private val playback: PlaybackController, bpmCoordinator: BpmCoordinator) : ScrollView(context) {
     private val column = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(context.dp(16), context.dp(12), context.dp(16), context.dp(24))
     }
     private val nameLabel = context.textLine("Choose a track in Library", 18f)
-    private val bpmLabel = context.textLine()
+    private val bpmPanel = BpmPanel(context, bpmCoordinator) { playback.speed }
     private val queueLabel = context.textLine()
     private val errorLabel = context.textLine()
     private val positionLabel = context.textLine("00:00 / 00:00")
@@ -57,7 +58,7 @@ class PlayerScreen(context: Context, private val playback: PlaybackController) :
 
         column.addView(context.textLine("Player", 23f))
         column.addView(nameLabel)
-        column.addView(bpmLabel)
+        column.addView(bpmPanel)
         column.addView(queueLabel)
         column.addView(errorLabel)
         column.addView(controls)
@@ -144,7 +145,7 @@ class PlayerScreen(context: Context, private val playback: PlaybackController) :
     fun refreshTrack() {
         val track = playback.currentTrack
         nameLabel.text = track?.name ?: "Choose a track in Library"
-        updateBpmLabel()
+        bpmPanel.refresh()
         queueLabel.text = if (track != null) "Track ${playback.queuePosition + 1} of ${playback.queueSize}" else ""
         queueLabel.visibility = if (track == null) View.GONE else View.VISIBLE
         errorLabel.visibility = View.GONE
@@ -201,19 +202,10 @@ class PlayerScreen(context: Context, private val playback: PlaybackController) :
         if (speedBar.progress != newProgress) speedBar.progress = newProgress
         speedLabel.text = String.format(Locale.US, "%.2f×", playback.speed)
         speedLabel.contentDescription = "Playback speed $percent percent. Tap to enter manually."
-        updateBpmLabel()
+        bpmPanel.refresh()
     }
 
-    private fun updateBpmLabel() {
-        val originalBpm = playback.currentTrack?.filenameBpm
-        val percent = TempoMath.toPercent(playback.speed)
-        bpmLabel.text = when {
-            originalBpm == null -> ""
-            percent == TempoMath.DEFAULT_PERCENT -> "Filename BPM: $originalBpm"
-            else -> "Filename BPM: $originalBpm → ${TempoMath.effectiveBpm(originalBpm, percent)} BPM"
-        }
-        bpmLabel.visibility = if (originalBpm == null) View.GONE else View.VISIBLE
-    }
+    fun refreshBpm() = bpmPanel.refresh()
 
     private fun setSpeedPercent(percent: Int) {
         playback.setSpeed(TempoMath.toSpeed(percent))

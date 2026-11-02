@@ -13,6 +13,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import com.wombatriy.androidplayer.bpm.BpmCoordinator
 import com.wombatriy.androidplayer.library.LibraryRepository
 import com.wombatriy.androidplayer.player.PlaybackController
 import com.wombatriy.androidplayer.ui.LibraryScreen
@@ -31,6 +32,9 @@ class MainActivity : Activity() {
     private lateinit var pages: List<View>
     private val prefs by lazy { getSharedPreferences("library", MODE_PRIVATE) }
     private val libraryRepository by lazy { LibraryRepository(this) }
+    private val bpmCoordinator by lazy {
+        BpmCoordinator(this) { if (::playerScreen.isInitialized) playerScreen.refreshBpm() }
+    }
 
     private var activeTab = 1
     private var loadedFromCache = false
@@ -39,7 +43,10 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         playback = PlaybackController(this, object : PlaybackController.Listener {
-            override fun onTrackChanged() = playerScreen.refreshTrack()
+            override fun onTrackChanged() {
+                bpmCoordinator.selectTrack(playback.currentTrack)
+                playerScreen.refreshTrack()
+            }
             override fun onPlaybackControlsChanged() = playerScreen.updatePlaybackState()
             override fun onPositionChanged(positionMs: Long, durationMs: Long) =
                 playerScreen.updatePosition(positionMs, durationMs)
@@ -75,7 +82,7 @@ class MainActivity : Activity() {
         }
         root.addView(nav)
 
-        playerScreen = PlayerScreen(this, playback)
+        playerScreen = PlayerScreen(this, playback, bpmCoordinator)
         libraryScreen = LibraryScreen(
             this,
             onChooseFolder = ::chooseFolder,
@@ -246,6 +253,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        bpmCoordinator.close()
         playback.release()
         libraryRepository.close()
         super.onDestroy()

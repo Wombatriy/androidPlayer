@@ -44,13 +44,19 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [x] Show filename BPM and resulting BPM at non-default playback speeds
 - [x] Arrange Prev, −10s, Play/Pause, +10s, Next in one compact row
 - [x] Remove the experimental Android mixer backend after device testing revealed crackling; keep Sonic as the stable default
-- [ ] Manual phone verification before merge
+- [x] Manual phone verification reported successful
 
-## 03 — Single-track BPM
-- [ ] Prefer valid leading `BPM - ` in filename
-- [ ] Estimate BPM only if filename has no BPM, store detected/manual/filename source
-- [ ] Manual correction with ×0.5, ×1.5, ×2, ×4 and tap tempo
-- [ ] Persist results and preserve half-/double-tempo ambiguity for human correction
+## 03 — Single-track BPM (PR #6)
+- [x] Use the filename BPM prefix when present; no redundant automatic analysis
+- [x] Detect BPM from a single selected audio file via MediaExtractor/MediaCodec on a worker thread
+- [x] Compute a first-pass attack-envelope autocorrelation estimate over at most 70 seconds
+- [x] Preserve filename/detected/manual source, correction and confidence across launches
+- [x] Manual correction: ×0.5, ×1.5, ×2, ×4, enter BPM and Tap Tempo
+- [x] Present half/double-tempo alternative and avoid claiming an estimate is exact
+- [x] Keep adjusted playback BPM synchronized with actual speed
+- [x] Add JVM tests for synthetic rhythms and tap tempo
+- [ ] Validate detection quality on real swing/jazz/pop/dance tracks on a phone
+- [ ] Consider spectral-flux or a more accurate onset model if rhythmic confidence is low
 
 ## 04 — Batch BPM
 - [ ] Automatically process newly added tracks and playlists
@@ -61,10 +67,12 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [ ] Preview `BPM - Artist - Track.ext`
 - [ ] Explicit confirmation, SAF rename, collision handling and error reporting
 
-## 06 — Playlists
-- [ ] Create/rename/delete playlists
-- [ ] Add tracks from Library using a context menu
-- [ ] Persist URI-based entries
+## 06 — Playlists (ordered reference lists, not copies of audio files)
+- [ ] Store each playlist as a small locally cached ordered list of SAF content URIs
+- [ ] Preserve insertion and explicitly chosen order; **never alphabetically sort playlists**
+- [ ] Create/rename/delete lists and add/remove tracks from the Library's context menu
+- [ ] Restore playlists after relaunch and gracefully handle moved, deleted or inaccessible files
+- [ ] Keep audio files in their original directories; playlist changes must never move them
 
 ## 07 — Queue
 - [ ] Fourth tab reflects selected playlist
@@ -76,12 +84,15 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [ ] Visually place and adjust A–B markers
 - [ ] Tighten A–B timing to avoid audible transition artifacts
 
-## 09 — Background playback and lock-screen controls (deferred from 02F)
-- [ ] Extract playback from Activity into MediaSessionService
-- [ ] Media notification and lock-screen Play/Pause, Previous and Next
-- [ ] Keep playback alive with screen off / app backgrounded
-- [ ] Test Bluetooth, headsets, audio focus and interruptions
-- [ ] Add permissions and foreground-service behavior for supported Android versions
+## 09 — Background playback, lock-screen controls and Android Back
+- [ ] Extract ExoPlayer from Activity into a persistent foreground MediaSessionService
+- [ ] Android Back must close/navigate the UI **without stopping current playback**
+- [ ] Support Play/Pause/Previous/Next from lock screen and system media notification
+- [ ] Keep playback running with screen off, Activity destroyed and app sent to background
+- [ ] Test Android Back, Home, recent-apps swipe, background process lifecycle and task recreation
+- [ ] Respect force-stop and explicit Stop as intentional playback termination
+- [ ] Test Bluetooth/headset buttons, interruptions and audio focus
+- [ ] Add service/notification permissions appropriate for Android API levels
 
 ## 10 — High-quality time-stretch DSP (moved to the end)
 - [ ] Prioritize fidelity for **0.8×–1.1×**; outside that range, current Sonic is acceptable
