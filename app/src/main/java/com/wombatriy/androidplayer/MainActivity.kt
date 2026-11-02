@@ -5,9 +5,11 @@ import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.view.WindowInsets
 import android.view.View
 import android.widget.*
 import androidx.media3.common.MediaItem
@@ -37,21 +39,23 @@ class MainActivity : Activity() {
     private var scrubbing = false
     private var playbackError: String? = null
     private var loadingFolder = false
+    private var playPauseButton: Button? = null
+    private var loopStatus: TextView? = null
+    private var errorText: TextView? = null
+    private var speedBar: SeekBar? = null
+    private var speedValue: TextView? = null
 
     private val tick = object : Runnable {
         override fun run() {
             if (::player.isInitialized) {
-                val pos = player.currentPosition.coerceAtLeast(0L)
+                var pos = player.currentPosition.coerceAtLeast(0L)
                 val end = bMs
                 val start = aMs
                 if (player.isPlaying && start != null && end != null && end > start && pos >= end) {
+                    pos = start
                     player.seekTo(start)
                 }
-                val duration = player.duration.takeIf { it > 0 } ?: 0L
-                if (!scrubbing) seek?.progress = if (duration > 0) {
-                    ((pos.toDouble() / duration) * 1000).toInt().coerceIn(0, 1000)
-                } else 0
-                seekText?.text = "${format(pos)} / ${format(duration)}"
+                updatePlaybackProgress(pos)
             }
             handler.postDelayed(this, 200)
         }
@@ -63,10 +67,13 @@ class MainActivity : Activity() {
         player.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
                 playbackError = error.localizedMessage ?: "Playback failed"
-                if (tab == 0) render()
+                errorText?.apply {
+                    text = "Playback error: ${playbackError}"
+                    visibility = View.VISIBLE
+                }
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                if (tab == 0) render()
+                playPauseButton?.text = if (isPlaying) "Pause" else "Play"
             }
         })
         createLayout()
@@ -102,13 +109,55 @@ class MainActivity : Activity() {
             textSize = 12f
         }
         container.addView(status)
+        // Android 15+ draws application content behind the system bars by default.
+        // Apply real status/navigation bar insets instead of hard-coded padding.
+        container.setOnApplyWindowInsetsListener { root, insets ->
+            val top: Int
+            val bottom: Int
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                top = insets.getInsets(WindowInsets.Type.statusBars()).top
+                bottom = insets.getInsets(WindowInsets.Type.navigationBars()).bottom
+            } else {
+                @Suppress("DEPRECATION")
+                top = insets.systemWindowInsetTop
+                @Suppress("DEPRECATION")
+                bottom = insets.systemWindowInsetBottom
+            }
+            root.setPadding(0, top, 0, bottom)
+            insets
+        }
         setContentView(container)
+        container.requestApplyInsets()
+    }
+
+    private fun updatePlaybackProgress(position: Long = player.currentPosition) {
+        val duration = player.duration.takeIf { it > 0 } ?: 0L
+        if (!scrubbing) seek?.progress = if (duration > 0) {
+            ((position.coerceAtLeast(0L).toDouble() / duration) * 1000).toInt().coerceIn(0, 1000)
+        } else 0
+        seekText?.text = "${format(position)} / ${format(duration)}"
+    }
+
+    private fun updateLoopStatus() {
+        val a = aMs
+        val b = bMs
+        val state = when {
+            a == null || b == null -> "Loop inactive"
+            b <= a -> "Set B after A to enable looping"
+            else -> "A–B loop active"
+        }
+        loopStatus?.text = "A = ${a?.let(::format) ?: "unset"}    B = ${b?.let(::format) ?: "unset"}\n$state"
     }
 
     private fun render() {
         content.removeAllViews()
         seek = null
         seekText = null
+        playPauseButton = null
+        loopStatus = null
+        errorText = null
+        speedBar = null
+        speedValue = null
         when (tab) {
             0 -> renderPlayer()
             1 -> renderLibrary()
@@ -158,8 +207,9 @@ class MainActivity : Activity() {
         }
         label(track.name)
         track.filenameBpm?.let { label("Filename BPM: $it") }
-        playbackError?.let { label("Playback error: $it") }
-
+        errorText = label(playbackError?.let { "Playback error: $it" } ?: "").apply {
+            visibility = if (playbackError == null) View.GONE else View.VISIBLE
+        }
         seekText = label("00:00 / 00:00")
         seek = SeekBar(this).apply {
             max = 1000
@@ -174,39 +224,59 @@ class MainActivity : Activity() {
             })
         }
         content.addView(seek)
+        updatePlaybackProgress()
         val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         controls.addView(Button(this).apply {
             text = "−10s"
-            setOnClickListener { player.seekTo((player.currentPosition - 10_000L).coerceAtLeast(0L)) }
+            setOnClickListener {
+                val target = (player.currentPosition - 10_000L).coerceAtLeast(0L)
+                player.seekTo(target)
+                updatePlaybackProgress(target)
+            }
         }, LinearLayout.LayoutParams(0, -2, 1f))
-        controls.addView(Button(this).apply {
+        playPauseButton = Button(this).apply {
             text = if (player.isPlaying) "Pause" else "Play"
-            setOnClickListener { if (player.isPlaying) player.pause() else player.play(); render() }
-        }, LinearLayout.LayoutParams(0, -2, 1f))
+            setOnClickListener { if (player.isPlaying) player.pause() else player.play() }
+        }
+        controls.addView(playPauseButton, LinearLayout.LayoutParams(0, -2, 1f))
         controls.addView(Button(this).apply {
             text = "+10s"
-            setOnClickListener { player.seekTo(player.currentPosition + 10_000L) }
+            setOnClickListener {
+                val duration = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+                val target = (player.currentPosition + 10_000L).coerceAtMost(duration)
+                player.seekTo(target)
+                updatePlaybackProgress(target)
+            }
         }, LinearLayout.LayoutParams(0, -2, 1f))
         content.addView(controls)
 
         label("Speed (pitch preserved)")
-        val speedLabel = label("${"%.2f".format(java.util.Locale.US, player.playbackParameters.speed)}×")
-        content.addView(SeekBar(this).apply {
-            max = 150
-            progress = ((player.playbackParameters.speed - 0.5f) * 100).roundToInt().coerceIn(0, 150)
+        speedValue = label("${"%.2f".format(java.util.Locale.US, player.playbackParameters.speed)}×")
+        speedBar = SeekBar(this).apply {
+            // One progress unit = 0.01x; 0 = 0.25x and 125 = 1.50x.
+            max = 125
+            progress = ((player.playbackParameters.speed - 0.25f) * 100).roundToInt().coerceIn(0, 125)
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(bar: SeekBar, value: Int, fromUser: Boolean) {
                     if (fromUser) {
-                        val speed = 0.5f + value / 100f
+                        val speed = (25 + value) / 100f
                         player.setPlaybackSpeed(speed)
-                        speedLabel.text = "${"%.2f".format(java.util.Locale.US, speed)}×"
+                        speedValue?.text = "${"%.2f".format(java.util.Locale.US, speed)}×"
                     }
                 }
                 override fun onStartTrackingTouch(bar: SeekBar) = Unit
                 override fun onStopTrackingTouch(bar: SeekBar) = Unit
             })
-        })
-        label("A = ${aMs?.let(::format) ?: "unset"}    B = ${bMs?.let(::format) ?: "unset"}")
+        }
+        content.addView(speedBar)
+        content.addView(SpeedRulerView(this), LinearLayout.LayoutParams(-1, dp(58)))
+        button("Reset speed to 1.00×") {
+            player.setPlaybackSpeed(1.0f)
+            speedBar?.progress = 75
+            speedValue?.text = "1.00×"
+        }
+        loopStatus = label("")
+        updateLoopStatus()
         val loopControls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         listOf("Set A", "Set B", "Clear A–B").forEachIndexed { idx, text ->
             loopControls.addView(Button(this).apply {
@@ -218,16 +288,12 @@ class MainActivity : Activity() {
                         1 -> bMs = player.currentPosition.coerceAtLeast(0L)
                         2 -> { aMs = null; bMs = null }
                     }
-                    // Invalid or reversed endpoints do not activate looping.
-                    render()
+                    // Update only the label; recreating the entire player made controls jump.
+                    updateLoopStatus()
                 }
             }, LinearLayout.LayoutParams(0, -2, 1f))
         }
         content.addView(loopControls)
-        val a = aMs
-        val b = bMs
-        if (a != null && b != null && b <= a) label("Set B after A to enable looping.")
-        else if (a != null && b != null) label("A–B loop active")
     }
 
     private fun openTrack(track: Track) {
