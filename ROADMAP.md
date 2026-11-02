@@ -56,7 +56,10 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [x] Keep adjusted playback BPM synchronized with actual speed
 - [x] Tap Tempo: ordered nanosecond intervals, drop fastest/slowest 25%, average middle 50% after 9 taps
 - [x] Reset the tap window on dialog close or after 3 seconds idle with a message
-- [x] Compact Player: one mode icon, A/B/trash loop controls, shorter speed ruler; no redundant labels
+- [x] Compact Player: one mode button with three uniform PNG icons, A/B/clear-loop icon controls, reset-speed PNG; shorter speed ruler
+- [x] Remove BPM dialog layout jump: keep Clear manual override visible but disabled until needed, reserve status space
+- [x] Show detected tempo alternatives for BOTH half (×0.5) and double (×2), useful for fast jazz
+- [x] Remove the always-visible Tap BPM instructions and keep only brief status/error messages
 - [x] JVM tests for synthetic rhythms, trimmed tap window and missed/double taps
 - [ ] Validate detection quality on real swing/jazz/pop/dance tracks on a phone
 - [ ] Consider spectral-flux or a more accurate onset model if rhythmic confidence is low

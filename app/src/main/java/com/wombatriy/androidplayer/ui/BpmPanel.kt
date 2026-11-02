@@ -11,8 +11,6 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import com.wombatriy.androidplayer.bpm.BpmCoordinator
 import com.wombatriy.androidplayer.bpm.BpmFormatting
-import com.wombatriy.androidplayer.bpm.BpmRecord
-import com.wombatriy.androidplayer.bpm.TapTempo
 import kotlin.math.abs
 
 /**
@@ -29,8 +27,14 @@ class BpmPanel(
     }
     private val filename = context.textLine("", 13f)
     private val detected = context.textLine("", 13f)
+    private val alternate = context.textLine("½: —     ×2: —", 13f)
     private val manual = context.textLine("", 13f)
-    private val detail = context.textLine("", 12f)
+    // Fixed height: updates cannot shift Tap BPM or other dialog buttons.
+    private val detail = context.textLine("", 12f).apply {
+        minHeight = context.dp(48)
+        maxLines = 2
+        ellipsize = android.text.TextUtils.TruncateAt.END
+    }
     private val analyzeButton = context.actionButton("Detect again") { bpm.analyze(force = true) }
     private val tapButton = context.actionButton("Tap BPM") { bpm.tap() }
     private val manualButton = context.actionButton("Enter BPM") { enterBpm() }
@@ -47,6 +51,7 @@ class BpmPanel(
         addView(active)
         addView(filename)
         addView(detected)
+        addView(alternate)
         addView(manual)
 
         val actions = LinearLayout(context).apply { orientation = HORIZONTAL }
@@ -64,10 +69,6 @@ class BpmPanel(
         addView(correctionRow)
         compact(resetButton)
         addView(resetButton)
-        addView(context.textLine(
-            "Tap ${TapTempo.REQUIRED_TAPS} or more times: average the middle 50% of sorted inter-tap intervals.",
-            12f
-        ))
         addView(detail)
         refresh()
     }
@@ -83,20 +84,26 @@ class BpmPanel(
         filename.text = "Filename: ${bpm.filenameBpm()?.toString() ?: "—"}"
         val estimate = bpm.detected()
         detected.text = when {
-            bpm.analyzing -> "Detected: analyzing audio…"
+            bpm.analyzing -> "Detected: analyzing…"
             estimate == null -> "Detected: —"
-            else -> {
-                val alt = estimate.alternative?.let { " (alternate: ${BpmFormatting.bpm(it)})" } ?: ""
-                "Detected: ${BpmFormatting.bpm(estimate.bpm)} BPM$alt"
-            }
+            else -> "Detected: ${BpmFormatting.bpm(estimate.bpm)} BPM"
+        }
+        alternate.text = if (estimate == null) {
+            "½: —     ×2: —"
+        } else {
+            "½: ${BpmFormatting.bpm(estimate.bpm / 2)}     ×2: ${BpmFormatting.bpm(estimate.bpm * 2)}"
         }
         manual.text = "Manual: ${bpm.manual()?.let { BpmFormatting.bpm(it.bpm) } ?: "—"}"
-        detail.text = bpm.message ?: ""
-        detail.visibility = if (detail.text.isBlank()) View.GONE else View.VISIBLE
+        // Reserve the status area even when empty, preventing resize on taps.
+        detail.text = bpm.message?.takeIf {
+            it.startsWith("Tap ") || it.startsWith("No taps") ||
+                it.startsWith("Detection unavailable") || it.startsWith("No clear beat")
+        } ?: ""
         analyzeButton.isEnabled = !bpm.analyzing
         analyzeButton.text = if (bpm.analyzing) "Analyzing…" else "Detect again"
         multipliers.forEach { it.isEnabled = chosen != null }
-        resetButton.visibility = if (bpm.hasManual()) View.VISIBLE else View.GONE
+        // Keep its space reserved: visibility changes used to move the Tap button.
+        resetButton.isEnabled = bpm.hasManual()
     }
 
     private fun compact(button: Button) {

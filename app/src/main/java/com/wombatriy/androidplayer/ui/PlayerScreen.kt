@@ -16,6 +16,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
+import com.wombatriy.androidplayer.R
 import com.wombatriy.androidplayer.bpm.BpmCoordinator
 import com.wombatriy.androidplayer.player.EndMode
 import com.wombatriy.androidplayer.player.TempoMath
@@ -41,7 +42,7 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
     private val playButton = context.actionButton("Play") { playback.togglePlayPause() }
     private val previousButton = context.actionButton("Previous") { playback.previous() }
     private val nextButton = context.actionButton("Next") { playback.next() }
-    private val modeButton = context.actionButton("⏭") { cycleEndMode() }
+    private val modeButton = context.iconButton(R.drawable.ic_mode_next, "After track: Next") { cycleEndMode() }
     private val speedLabel = context.textLine("1.00×", 24f).apply {
         textAlignment = View.TEXT_ALIGNMENT_CENTER
         setTextColor(Color.rgb(0, 113, 112))
@@ -112,15 +113,11 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
         }
         speedHeading.addView(View(context), LinearLayout.LayoutParams(context.dp(44), 1))
         speedHeading.addView(speedLabel, LinearLayout.LayoutParams(0, -2, 1f))
-        speedHeading.addView(context.actionButton("↺") {
-            setSpeedPercent(TempoMath.DEFAULT_PERCENT)
-        }.apply {
-            contentDescription = "Reset speed to 1.00×"
-            textSize = 20f
-            minWidth = 0
-            minimumWidth = 0
-            setPadding(0, 0, 0, 0)
-        }, LinearLayout.LayoutParams(context.dp(44), context.dp(40)))
+        speedHeading.addView(context.iconButton(
+            R.drawable.ic_reset_speed,
+            "Reset speed to 1.00×"
+        ) { setSpeedPercent(TempoMath.DEFAULT_PERCENT) },
+            LinearLayout.LayoutParams(context.dp(44), context.dp(40)))
         controls.addView(speedHeading)
 
         speedBar.max = TempoMath.MAX_PERCENT - TempoMath.MIN_PERCENT
@@ -140,12 +137,14 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        fun addSmallControl(button: Button) {
-            button.minWidth = 0
-            button.minimumWidth = 0
-            button.textSize = 17f
-            button.setPadding(0, 0, 0, 0)
-            loopControls.addView(button, LinearLayout.LayoutParams(0, context.dp(44), 1f))
+        fun addSmallControl(control: View) {
+            if (control is Button) {
+                control.minWidth = 0
+                control.minimumWidth = 0
+                control.textSize = 17f
+                control.setPadding(0, 0, 0, 0)
+            }
+            loopControls.addView(control, LinearLayout.LayoutParams(0, context.dp(44), 1f))
         }
         addSmallControl(modeButton)
         addSmallControl(context.actionButton("A") { playback.setA() }.apply {
@@ -154,9 +153,10 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
         addSmallControl(context.actionButton("B") { playback.setB() }.apply {
             contentDescription = "Set loop point B"
         })
-        addSmallControl(context.actionButton("🗑") { playback.clearLoop() }.apply {
-            contentDescription = "Clear A–B loop"
-        })
+        addSmallControl(context.iconButton(
+            R.drawable.ic_clear_loop,
+            "Clear A–B loop"
+        ) { playback.clearLoop() })
         controls.addView(loopControls)
         controls.addView(loopLabel)
         bpmButton.isAllCaps = false
@@ -202,11 +202,11 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
         if (playButton.text != expected) playButton.text = expected
         previousButton.isEnabled = playback.hasPrevious
         nextButton.isEnabled = playback.hasNext
-        modeButton.text = when (playback.endMode) {
-            EndMode.STOP -> "⏹"
-            EndMode.NEXT -> "⏭"
-            EndMode.REPEAT -> "🔁"
-        }
+        modeButton.setImageResource(when (playback.endMode) {
+            EndMode.STOP -> R.drawable.ic_mode_stop
+            EndMode.NEXT -> R.drawable.ic_mode_next
+            EndMode.REPEAT -> R.drawable.ic_mode_repeat
+        })
         modeButton.contentDescription = "After track: ${playback.endMode.caption}. Tap to change."
         modeButton.tooltipText = "After track: ${playback.endMode.caption}"
     }

@@ -159,9 +159,19 @@ the full controls:
 
 Other Player controls are shortened to fit a normal phone screen:
 **Prev | −10s | Play/Pause | +10s | Next** remain one row; playback end mode
-cycles **⏹ Stop → ⏭ Next → 🔁 Repeat** via one icon button. The A–B row has
-compact **A**, **B**, and **🗑 Clear** buttons. Redundant `At track end` and
-`Loop inactive` text is removed, and the speed ruler is shorter.
+cycles **Stop → Next → Repeat** using three matching teal PNG assets. The
+A–B row has compact **A**, **B**, and **Clear** (matching PNG) controls.
+Speed Reset uses the same icon family; PNG assets are in
+`app/src/main/res/drawable-nodpi/`. Buttons retain accessible labels and
+their previous actions. Redundant `At track end` and `Loop inactive` text is
+removed, and the speed ruler is shorter.
+
+In BPM adjustments, **Clear manual override** is always present but disabled
+until a manual BPM has been saved, so tapping cannot shift the button rows.
+The status line also reserves fixed space and the explanatory Tap BPM paragraph
+is removed. Detected BPM shows both **½** and **×2** alternatives: a detected
+118 BPM therefore displays 59 and 236 as possible metrical interpretations.
+Detection itself still does not override filename BPM.
 
 ### Device verification
 
