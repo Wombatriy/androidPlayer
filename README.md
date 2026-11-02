@@ -32,3 +32,21 @@ The app uses SAF and does not request unrestricted file access. On Android 11+, 
 4. SAF-based safe file renaming with preview/confirmation.
 5. Persistent playlists and add-to-playlist actions from Library.
 6. Playlist-based sortable Queue and drag-and-drop ordering.
+
+## Gradle wrapper / Android Studio setup
+
+All four official Gradle 8.11.1 wrapper files are checked into the repository.
+Do **not** install Gradle globally just to build this project.
+
+On Windows PowerShell:
+
+```powershell
+git switch feature/01-player-foundation
+git pull origin feature/01-player-foundation
+.\gradlew.bat --version
+.\gradlew.bat :app:assembleDebug
+```
+
+In Android Studio, use **Sync Project with Gradle Files**. Select **Gradle Wrapper** as the Gradle distribution and **JDK 17** as Gradle JDK. Install Android SDK 35 when prompted.
+
+The repo has a GitHub Actions workflow that attempts a clean debug build for each PR. Local machine-specific files such as `local.properties` should not normally be committed; the workflow discards the checked-in `local.properties` before building.
