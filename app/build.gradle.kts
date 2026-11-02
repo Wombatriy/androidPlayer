@@ -20,9 +20,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+    buildToolsVersion = "35.0.0"
 }
 
 dependencies {
     implementation("androidx.media3:media3-exoplayer:1.11.1")
-    implementation("androidx.documentfile:documentfile:1.0.1")
+    implementation("androidx.documentfile:documentfile:1.1.0")
 }
