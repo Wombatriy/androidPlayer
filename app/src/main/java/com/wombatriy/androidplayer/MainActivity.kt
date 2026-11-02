@@ -13,12 +13,11 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import com.wombatriy.androidplayer.library.LibraryCache
+import com.wombatriy.androidplayer.library.LibraryRepository
 import com.wombatriy.androidplayer.player.PlaybackController
 import com.wombatriy.androidplayer.ui.LibraryScreen
 import com.wombatriy.androidplayer.ui.PlayerScreen
 import kotlin.math.roundToInt
-import java.util.concurrent.Executors
 
 /**
  * Activity is only the composition root: navigation, SAF permission and folder loading.
@@ -31,11 +30,9 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var pages: List<View>
     private val prefs by lazy { getSharedPreferences("library", MODE_PRIVATE) }
-    private val cache by lazy { LibraryCache(this) }
-    private val libraryIo = Executors.newSingleThreadExecutor()
+    private val libraryRepository by lazy { LibraryRepository(this) }
 
     private var activeTab = 1
-    @Volatile private var scanGeneration = 0
     private var loadedFromCache = false
     private var loadingFolder = false
 
@@ -203,35 +200,21 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Folder access expired. Choose it again.", Toast.LENGTH_LONG).show()
             return
         }
-        val generation = ++scanGeneration
         loadingFolder = true
         libraryScreen.setLoading(true)
         updateStatus()
 
-        libraryIo.execute {
-            val result = runCatching {
-                val cached = if (forceRefresh) null else cache.read(treeUri)
-                if (cached != null) {
-                    cached to true
-                } else {
-                    val fresh = MusicFolder.load(this, treeUri)
-                    // Cache failures must never hide otherwise usable scanned tracks.
-                    if (generation == scanGeneration) runCatching { cache.write(treeUri, fresh) }
-                    fresh to false
-                }
+        libraryRepository.load(treeUri, forceRefresh) { result ->
+            if (isFinishing || isDestroyed) return@load
+            loadingFolder = false
+            result.onSuccess { snapshot ->
+                loadedFromCache = snapshot.fromCache
+                libraryScreen.submitTracks(snapshot.tracks)
+            }.onFailure { error ->
+                libraryScreen.setLoading(false)
+                Toast.makeText(this, "Unable to load folder: ${error.message}", Toast.LENGTH_LONG).show()
             }
-            runOnUiThread {
-                if (generation != scanGeneration || isFinishing || isDestroyed) return@runOnUiThread
-                loadingFolder = false
-                result.onSuccess { (tracks, fromCache) ->
-                    loadedFromCache = fromCache
-                    libraryScreen.submitTracks(tracks)
-                }.onFailure { error ->
-                    libraryScreen.setLoading(false)
-                    Toast.makeText(this, "Unable to load folder: ${error.message}", Toast.LENGTH_LONG).show()
-                }
-                updateStatus()
-            }
+            updateStatus()
         }
     }
 
@@ -262,9 +245,8 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
-        ++scanGeneration
         playback.release()
-        libraryIo.shutdownNow()
+        libraryRepository.close()
         super.onDestroy()
     }
 
