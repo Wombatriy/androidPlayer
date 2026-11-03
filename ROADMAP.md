@@ -140,8 +140,12 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [x] Eliminate periodic waveform shimmer by anchoring drawn peak groups to **absolute 50ms audio bins**, instead of regrouping around the moving viewport
 - [x] Animate the visible waveform at display refresh (vsync), sampling ExoPlayer's live media position rather than stepping with the 120ms Player UI ticker
 - [x] Replace raw per-vsync player-position sampling with a monotonic interpolated visual clock, correcting small drift softly and snapping on seek/loop/speed/pause changes
-- [x] Pre-build only the local waveform peaks into a buffered Android Path; move this Path as audio progresses instead of regrouping hundreds of bins each frame
+- [x] Offload waveform rasterization to a dedicated low-priority worker and cache small transparent bitmap tiles; main-thread onDraw only translates/tints ready tiles
 - [x] Cache second labels to avoid repeated costly String.format/Formatter allocations during animation
+- [x] Cap waveform animation to ~30 fps so playback controls and the tempo SeekBar retain main-thread time
+- [x] Bound rasterization to one running and one pending tile; discard obsolete renders on fast scrubs and cancel after track/size changes
+- [x] Limit tile size to at most two screen widths, including when adjusting the viewport-radius constant
+- [x] Test the tile-window budget with normal zoom, tight zoom and track boundaries
 - [x] Reduce decoder/UI competition: explicit low Android scheduling priority, periodic worker yield and throttled decode percentage updates
 - [x] Rate-limit Logcat "WaveformPerf" diagnostics for >=90ms frame gaps / slow waveform draws so device-specific bottlenecks can be identified
 - [x] Add JVM tests for interpolation, speed changes, pausing, seek/loop jumps and reuse of buffered geometry over hundreds of frames

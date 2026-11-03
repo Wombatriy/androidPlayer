@@ -495,12 +495,14 @@ the rendering pipeline has been tightened further:
    gradually (at most 7 ms per 400 ms); real seeks, loop restarts, changes
    of speed, pause and resume snap to the actual player position.
    Audio playback itself is unchanged.
-2. **Buffered peak geometry.** On the first draw, only the current 20-second
-   window plus ~10 seconds of margin on each side is compiled into a cached
-   Android `Path`. The animation moves this stable Path without looping
-   through and regrouping all waveform peaks on every frame. New geometry
-   is prepared only when approaching the buffered edge, the user seeks out
-   of it or the zoom/screen dimensions change.
+2. **Off-thread bitmap tile rendering.** A first optimization buffered a
+   `Path`, but the UI thread still **rasterized that complex Path twice
+   on every frame**. This could make Play/Pause and speed controls sluggish.
+   Now a separate low-priority worker draws 20 seconds of peaks plus
+   up to 10 seconds of padding into one small transparent Bitmap.
+   Each animation frame just draws this ready Bitmap with an X translation
+   and two lightweight color tints. Pending tile requests are bounded
+   and obsolete ones are discarded while scrubbing.
 3. **Less main-thread garbage.** Time labels are rebuilt only when the
    whole displayed second changes; the previous two `String.format`
    calls on every frame have been removed.
@@ -521,6 +523,36 @@ waveform and once with a never-before-played song. Pause and scrub
 slowly, then try changing speed and A–B loop. The background waveform
 calculation should not freeze the rest of the Player UI. If it still does,
 capture the `WaveformPerf` Logcat lines and the Android frame timeline.
+
+### UI responsiveness after waveform generation
+
+A later phone test showed that the previous cached `Path` renderer still
+competed with the main thread: animation looked smoother, but the Play/Pause
+buttons and tempo SeekBar lagged as soon as waveform appeared.
+
+To prioritize the rest of the Player, `WaveformTileRenderer` now builds a
+small transparent waveform bitmap in a **separate background worker**.
+The only hot-path operations in `WaveformView.onDraw()` are translating and
+drawing the already-rasterized bitmap, drawing the playhead, markers and
+cached time labels. Audio sample aggregation and peak rasterization never
+run inside the main-thread draw callback.
+
+The animation rate is now capped at **about 30 FPS**, not a continuous
+full-refresh 60+ FPS loop. The playback position still comes from the
+monotonic smoothed clock, and the waveform still scrolls smoothly.
+The helper limits tile images to **two viewport widths maximum** and keeps
+only one running and one queued tile-render request. Rapid track seeking
+discards old requests without blocking UI input.
+
+The underlying waveform decoding remains a low-priority background task.
+No new MediaCodec resources are allocated by this drawing change,
+and the `waveforms-v2` disk cache does not need to be reset.
+
+**First check:** start an already-cached track and repeatedly use Play/Pause,
+tempo slider and Prev/Next. Compare with Player before waveform appeared.
+Then open an uncached file, wait for its waveform, and test the same controls.
+If there are still slowdowns, please collect the `WaveformPerf` Logcat
+warnings and note whether delays occur only while the waveform is visible.
 
 ### Stability and touch spacing
 
