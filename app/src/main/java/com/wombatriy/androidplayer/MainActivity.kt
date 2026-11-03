@@ -43,7 +43,7 @@ class MainActivity : Activity() {
     private lateinit var playback: PlaybackController
     private var serviceBound = false
     private var pendingUiState: Bundle? = null
-    private val backCallback = OnBackInvokedCallback { handleBackNavigation() }
+    private var backCallback: OnBackInvokedCallback? = null
 
     private val playbackListener = object : PlaybackController.Listener {
         override fun onTrackChanged() {
@@ -177,8 +177,10 @@ class MainActivity : Activity() {
         // Android 13+ predictive back requires the platform dispatcher.
         // Older devices use onBackPressed below.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val callback = OnBackInvokedCallback { handleBackNavigation() }
+            backCallback = callback
             onBackInvokedDispatcher.registerOnBackInvokedCallback(
-                OnBackInvokedDispatcher.PRIORITY_DEFAULT, backCallback
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback
             )
         }
         setContentView(TextView(this).apply {
@@ -520,7 +522,10 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            onBackInvokedDispatcher.unregisterOnBackInvokedCallback(backCallback)
+            backCallback?.let {
+                onBackInvokedDispatcher.unregisterOnBackInvokedCallback(it)
+            }
+            backCallback = null
         }
         if (::playerScreen.isInitialized) {
             playback.removeListener(playbackListener)

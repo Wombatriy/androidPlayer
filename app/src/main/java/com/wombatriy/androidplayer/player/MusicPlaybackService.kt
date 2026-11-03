@@ -33,6 +33,7 @@ class MusicPlaybackService : MediaSessionService() {
 
         val openApp = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            action = MainActivity.ACTION_SHOW_PLAYER
         }
         val sessionIntent = PendingIntent.getActivity(
             this, 0, openApp,
@@ -54,7 +55,11 @@ class MusicPlaybackService : MediaSessionService() {
 
     override fun onBind(intent: Intent?): IBinder? {
         val sessionBinder = super.onBind(intent)
-        return if (intent?.action == ACTION_LOCAL_BIND) localBinder else sessionBinder
+        return if (intent?.action == ACTION_LOCAL_BIND) {
+            if (LocalBindAuth.matches(this, intent.getStringExtra(EXTRA_LOCAL_BIND_TOKEN))) {
+                localBinder
+            } else null
+        } else sessionBinder
     }
 
     // Default MediaSessionService.onTaskRemoved keeps foreground playback
@@ -67,5 +72,6 @@ class MusicPlaybackService : MediaSessionService() {
 
     companion object {
         const val ACTION_LOCAL_BIND = "com.wombatriy.androidplayer.LOCAL_PLAYBACK_BIND"
+        const val EXTRA_LOCAL_BIND_TOKEN = "com.wombatriy.androidplayer.INTERNAL_BIND_TOKEN"
     }
 }
