@@ -3,31 +3,72 @@ package com.wombatriy.androidplayer.waveform
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
-/** Pure, JVM-testable sampling and display conversions. */
+/** JVM-testable time, viewport and amplitude calculations. */
 object WaveformMath {
-    const val BINS = 512
+    /**
+     * One peak per 50 ms across the song: a 20-second window has up to
+     * 400 meaningful samples rather than a few dozen full-track bins.
+     * 25-minute tracks occupy only ~30 KB in the on-disk cache.
+     */
+    const val BIN_DURATION_MS = 50L
 
-    fun binForTimestamp(timestampUs: Long, durationUs: Long, bins: Int = BINS): Int {
-        if (durationUs <= 0L || bins <= 0) return 0
-        // Double avoids Long overflow on very long tracks.
-        return (timestampUs.coerceAtLeast(0L).toDouble() / durationUs * bins)
-            .toInt().coerceIn(0, bins - 1)
+    fun binsForDuration(durationMs: Long): Int {
+        require(durationMs > 0L) { "Waveform duration must be positive" }
+        val bins = (durationMs - 1L) / BIN_DURATION_MS + 1L
+        require(bins <= 30_000L) { "Waveform exceeds 25-minute limit" }
+        return bins.toInt()
     }
 
-    fun millisAtFraction(fraction: Float, durationMs: Long): Long {
-        if (durationMs <= 0L || !fraction.isFinite()) return 0L
-        return (fraction.coerceIn(0f, 1f).toDouble() * durationMs)
-            .toLong().coerceIn(0L, durationMs)
+    fun binForTimestamp(timestampUs: Long, bins: Int): Int {
+        if (bins <= 0) return 0
+        return (timestampUs.coerceAtLeast(0L) / (BIN_DURATION_MS * 1_000L))
+            .coerceIn(0L, bins.toLong() - 1L).toInt()
     }
 
-    fun fractionAtMillis(positionMs: Long, durationMs: Long): Float =
-        if (durationMs <= 0L) 0f
-        else (positionMs.toDouble() / durationMs).toFloat().coerceIn(0f, 1f)
+    data class Window(val startMs: Long, val endMs: Long) {
+        val lengthMs: Long get() = (endMs - startMs).coerceAtLeast(0L)
+    }
+
+    /** A fixed-width time window, clamped to the start/end of a track. */
+    fun windowAround(positionMs: Long, durationMs: Long, radiusMs: Long): Window {
+        if (durationMs <= 0L || radiusMs <= 0L) return Window(0L, 0L)
+        val windowLength = minOf(durationMs, radiusMs.coerceAtMost(Long.MAX_VALUE / 2L) * 2L)
+        val lastStart = durationMs - windowLength
+        val start = (positionMs.coerceIn(0L, durationMs) - windowLength / 2L)
+            .coerceIn(0L, lastStart)
+        return Window(start, start + windowLength)
+    }
+
+    fun timeAtFraction(fraction: Float, window: Window): Long {
+        if (window.lengthMs <= 0L || !fraction.isFinite()) return window.startMs
+        return window.startMs +
+            (fraction.coerceIn(0f, 1f).toDouble() * window.lengthMs).toLong()
+    }
+
+    fun fractionAtTime(positionMs: Long, window: Window): Float =
+        if (window.lengthMs <= 0L) 0f
+        else ((positionMs - window.startMs).toDouble() / window.lengthMs)
+            .toFloat().coerceIn(0f, 1f)
 
     /**
-     * Normalize using a robust 95th percentile instead of the loudest transient.
-     * The square root boosts quiet sections without losing contrasts.
+     * Swipe left moves the audio forward; swipe right moves backward.
+     * The original window width stays fixed throughout each gesture.
      */
+    fun swipedPosition(
+        originMs: Long,
+        deltaX: Float,
+        contentWidthPx: Float,
+        windowLengthMs: Long,
+        durationMs: Long
+    ): Long {
+        if (durationMs <= 0L || contentWidthPx <= 0f ||
+            !deltaX.isFinite() || windowLengthMs <= 0L) {
+            return originMs.coerceIn(0L, durationMs.coerceAtLeast(0L))
+        }
+        val shift = deltaX.toDouble() / contentWidthPx * windowLengthMs
+        return (originMs.toDouble() - shift).toLong().coerceIn(0L, durationMs)
+    }
+
     fun normalizedPeaks(peaks: DoubleArray): ByteArray {
         if (peaks.isEmpty()) return ByteArray(0)
         val sorted = peaks.filter { it.isFinite() && it >= 0.0 }.sorted()
@@ -45,6 +86,6 @@ object WaveformMath {
 data class WaveformData(val durationMs: Long, val levels: ByteArray) {
     init {
         require(durationMs > 0L)
-        require(levels.size == WaveformMath.BINS)
+        require(levels.size == WaveformMath.binsForDuration(durationMs))
     }
 }

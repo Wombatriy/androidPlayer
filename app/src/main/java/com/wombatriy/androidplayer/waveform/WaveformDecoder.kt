@@ -14,7 +14,7 @@ import java.util.concurrent.CancellationException
 import kotlin.math.abs
 
 /**
- * One streaming decode of an entire song into 512 lightweight peak buckets.
+ * One streaming decode of an entire song into 50 ms peak buckets.
  * Never called on the UI thread. No PCM is retained after processing.
  *
  * AudioDecoderSlots limits foreground+batch BPM+waveform to two codecs total.
@@ -54,7 +54,8 @@ class WaveformDecoder(private val context: Context) {
                 decoder.start()
                 started = true
 
-                val peaks = DoubleArray(WaveformMath.BINS)
+                val durationMs = durationUs / 1_000L
+                val peaks = DoubleArray(WaveformMath.binsForDuration(durationMs))
                 val info = MediaCodec.BufferInfo()
                 var outputFormat = format
                 var inputEnded = false
@@ -103,7 +104,7 @@ class WaveformDecoder(private val context: Context) {
                                     pcm.position(info.offset)
                                     pcm.limit(info.offset + info.size)
                                     sampleCount += collectPeaks(
-                                        pcm, info.presentationTimeUs, durationUs,
+                                        pcm, info.presentationTimeUs,
                                         outputFormat, peaks
                                     )
                                 }
@@ -118,7 +119,7 @@ class WaveformDecoder(private val context: Context) {
                 }
                 if (cancelled()) throw CancellationException("Waveform was cancelled")
                 require(sampleCount > 0L) { "No PCM samples decoded" }
-                WaveformData(durationUs / 1000L, WaveformMath.normalizedPeaks(peaks))
+                WaveformData(durationMs, WaveformMath.normalizedPeaks(peaks))
             }
         } finally {
             if (started) runCatching { codec?.stop() }
@@ -134,7 +135,6 @@ class WaveformDecoder(private val context: Context) {
     private fun collectPeaks(
         pcm: ByteBuffer,
         presentationUs: Long,
-        durationUs: Long,
         format: MediaFormat,
         peaks: DoubleArray
     ): Long {
@@ -167,7 +167,7 @@ class WaveformDecoder(private val context: Context) {
             }
             val timeUs = presentationUs.coerceAtLeast(0L) +
                 frame.toLong() * 1_000_000L / sampleRate
-            val bucket = WaveformMath.binForTimestamp(timeUs, durationUs)
+            val bucket = WaveformMath.binForTimestamp(timeUs, peaks.size)
             peaks[bucket] = maxOf(peaks[bucket], peak)
             accepted++
         }

@@ -36,7 +36,6 @@ class PlaybackController(context: Context, private val listener: Listener) {
         private set
     private var released = false
     private var lastUiTick = 0L
-    private var editingLoopMarker = false
 
     var currentTrack: Track? = null
         private set
@@ -73,8 +72,7 @@ class PlaybackController(context: Context, private val listener: Listener) {
             if (released) return
             var position = currentPosition
             val loop = activeLoop
-            if (loop != null && !editingLoopMarker &&
-                player.playWhenReady && player.playbackState != Player.STATE_ENDED) {
+            if (loop != null && player.playWhenReady && player.playbackState != Player.STATE_ENDED) {
                 val corrected = loop.constrainSeek(position)
                 if (corrected != position) {
                     player.seekTo(corrected)
@@ -89,7 +87,7 @@ class PlaybackController(context: Context, private val listener: Listener) {
             // Keep the UI at ~8fps, but check active A–B boundaries more
             // frequently to reduce audible overshoot without redrawing more.
             handler.postDelayed(this,
-                if (loop != null && !editingLoopMarker && player.playWhenReady) 25L else 120L)
+                if (loop != null && player.playWhenReady) 25L else 120L)
         }
     }
 
@@ -147,7 +145,6 @@ class PlaybackController(context: Context, private val listener: Listener) {
         currentTrack = track
         pointA = null
         pointB = null
-        editingLoopMarker = false
         player.setMediaItem(MediaItem.fromUri(track.uri))
         player.prepare()
         player.play()
@@ -287,19 +284,16 @@ class PlaybackController(context: Context, private val listener: Listener) {
     fun setA() = setAAt(currentPosition)
     fun setB() = setBAt(currentPosition)
 
-    /** Supports dragging waveform markers without forcing a seek every frame. */
-    fun setAAt(ms: Long, finalize: Boolean = true) {
+    fun setAAt(ms: Long) {
         pointA = clampToTrack(ms)
-        editingLoopMarker = !finalize
         listener.onLoopChanged()
-        if (finalize) normalizeCurrentPosition()
+        normalizeCurrentPosition()
     }
 
-    fun setBAt(ms: Long, finalize: Boolean = true) {
+    fun setBAt(ms: Long) {
         pointB = clampToTrack(ms)
-        editingLoopMarker = !finalize
         listener.onLoopChanged()
-        if (finalize) normalizeCurrentPosition()
+        normalizeCurrentPosition()
     }
 
     private fun clampToTrack(ms: Long): Long {
@@ -310,7 +304,6 @@ class PlaybackController(context: Context, private val listener: Listener) {
     fun clearLoop() {
         pointA = null
         pointB = null
-        editingLoopMarker = false
         listener.onLoopChanged()
     }
 

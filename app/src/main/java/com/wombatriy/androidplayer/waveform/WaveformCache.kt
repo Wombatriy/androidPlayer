@@ -10,10 +10,11 @@ import java.security.MessageDigest
 
 /**
  * Small persistent waveform files, independent of the library-scan cache.
- * Each song uses 512 bytes plus a short header. Atomic writes survive crashes.
+ * Each song uses one byte per 50 ms (~4.8 KB for a 4-minute song).
+ * Atomic writes survive crashes; format v2 never mistakes old 512-bin files for zoomable data.
  */
 class WaveformCache(context: Context) {
-    private val folder = File(context.applicationContext.filesDir, "waveforms-v1")
+    private val folder = File(context.applicationContext.filesDir, "waveforms-v2")
     private fun file(uri: Uri): File {
         val digest = MessageDigest.getInstance("SHA-256")
             .digest(uri.toString().toByteArray(Charsets.UTF_8))
@@ -29,7 +30,7 @@ class WaveformCache(context: Context) {
                 require(stream.readInt() == MAGIC)
                 val duration = stream.readLong()
                 val count = stream.readInt()
-                require(duration > 0 && count == WaveformMath.BINS)
+                require(duration > 0 && count == WaveformMath.binsForDuration(duration))
                 // Avoid reusing a waveform if the provider replaced a file
                 // while retaining its content URI.
                 require(expectedDurationMs <= 0L ||
@@ -59,5 +60,5 @@ class WaveformCache(context: Context) {
         }
     }
 
-    companion object { private const val MAGIC = 0x57415631 }
+    companion object { private const val MAGIC = 0x57415632 }
 }

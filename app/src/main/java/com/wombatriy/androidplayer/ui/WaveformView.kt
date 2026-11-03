@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -13,54 +14,48 @@ import kotlin.math.abs
 import kotlin.math.max
 
 /**
- * Lightweight waveform: one cached series of peaks, playhead, and draggable
- * A/B handles. All drawing happens in-place without reallocating a bitmap.
- *
- * Tap: seek. Drag near A/B: move marker. Long-press elsewhere: choose A or B.
+ * Playback-centered waveform: tap to seek in the visible window, or drag
+ * left/right to scrub. Loop markers are display-only (set by A/B buttons).
+ * TabSwipeNavigator excludes this view from page-switch gestures.
  */
 class WaveformView(
     context: Context,
-    private val onSeek: (Long) -> Unit,
-    private val onMarkerChanged: (Marker, Long, Boolean) -> Unit,
-    private val onLongPressAt: (Long) -> Unit
+    private val onSeek: (Long) -> Unit
 ) : View(context) {
-    enum class Marker { A, B }
+    companion object {
+        /** Change this to 5 for a total 10-second window, or 15 for 30 seconds. */
+        const val WINDOW_RADIUS_SECONDS = 10L
+        private const val SEEK_THROTTLE_MS = 80L
+    }
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val teal = Color.rgb(0, 119, 116)
     private val muted = Color.rgb(153, 184, 184)
     private val markerAColor = Color.rgb(37, 123, 210)
     private val markerBColor = Color.rgb(222, 108, 44)
-    private val playheadColor = Color.rgb(32, 46, 54)
+    private val ink = Color.rgb(32, 46, 54)
     private val slop = ViewConfiguration.get(context).scaledTouchSlop
-    private val closeEnough = context.dp(26).toFloat()
-    private val minimumBar = context.dp(1).toFloat()
-    private val labelSize = 12f * resources.displayMetrics.scaledDensity
+    private val labelSize = 11f * resources.displayMetrics.scaledDensity
 
     private var waveform: WaveformData? = null
-    private var durationMs: Long = 0L
-    private var positionMs: Long = 0L
+    private var durationMs = 0L
+    private var positionMs = 0L
     private var pointA: Long? = null
     private var pointB: Long? = null
-
-    private var grabbed: Marker? = null
+    private var tracking = false
+    private var dragging = false
     private var downX = 0f
     private var downY = 0f
-    private var dragged = false
-    private var longPressed = false
-    private val longPressRunnable = Runnable {
-        if (!dragged && grabbed == null && durationMs > 0L) {
-            longPressed = true
-            performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
-            onLongPressAt(timeForX(downX))
-        }
-    }
+    private var originalPosition = 0L
+    private var previewPosition = 0L
+    private var dragWindow = WaveformMath.Window(0L, 0L)
+    private var lastSeekAt = 0L
 
     init {
         minimumHeight = context.dp(100)
         isClickable = true
         isFocusable = true
-        contentDescription = "Waveform. Tap to seek; long press to set A or B; drag markers."
+        contentDescription = "Zoomed waveform. Swipe left to go forward, right to go back; tap to seek. Use A/B buttons for loop markers."
         setBackgroundColor(Color.rgb(241, 247, 247))
     }
 
@@ -74,7 +69,7 @@ class WaveformView(
         val oldPosition = positionMs
         val oldDuration = durationMs
         durationMs = duration.takeIf { it > 0L } ?: waveform?.durationMs ?: 0L
-        positionMs = position.coerceAtLeast(0L)
+        if (!tracking) positionMs = position.coerceAtLeast(0L)
         if (oldPosition != positionMs || oldDuration != durationMs) invalidate()
     }
 
@@ -85,89 +80,101 @@ class WaveformView(
         invalidate()
     }
 
-    private fun leftEdge(): Float = paddingLeft + context.dp(12).toFloat()
-    private fun rightEdge(): Float = max(leftEdge() + 1f, width - paddingRight - context.dp(12).toFloat())
-    private fun xAt(timeMs: Long): Float =
-        leftEdge() + WaveformMath.fractionAtMillis(timeMs, durationMs) *
-            (rightEdge() - leftEdge())
-
-    private fun timeForX(x: Float): Long {
-        val fraction = ((x - leftEdge()) / (rightEdge() - leftEdge())).coerceIn(0f, 1f)
-        return WaveformMath.millisAtFraction(fraction, durationMs)
-    }
+    private fun left() = paddingLeft + context.dp(12).toFloat()
+    private fun right() = max(left() + 1f, width - paddingRight - context.dp(12).toFloat())
+    private fun displayedPosition() = if (tracking && dragging) previewPosition else positionMs
+    private fun viewport() = WaveformMath.windowAround(
+        displayedPosition(), durationMs, WINDOW_RADIUS_SECONDS * 1_000L
+    )
+    private fun xFor(ms: Long, window: WaveformMath.Window): Float =
+        left() + WaveformMath.fractionAtTime(ms, window) * (right() - left())
+    private fun timeAt(x: Float, window: WaveformMath.Window): Long =
+        WaveformMath.timeAtFraction(((x - left()) / (right() - left())).coerceIn(0f, 1f), window)
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        val left = leftEdge()
-        val right = rightEdge()
-        val widthPx = right - left
-        val center = height * 0.5f
-        val maxAmplitude = height * 0.36f
+        val window = viewport()
+        val l = left()
+        val r = right()
+        val span = r - l
+        val middle = height * 0.5f
+        val heightScale = height * 0.29f
 
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = context.dp(1).toFloat()
         paint.color = Color.rgb(218, 229, 229)
-        canvas.drawLine(left, center, right, center, paint)
+        canvas.drawLine(l, middle, r, middle, paint)
+        if (window.lengthMs == 0L) return
 
         val a = pointA
         val b = pointB
-        if (a != null && b != null && b > a && durationMs > 0L) {
-            paint.style = Paint.Style.FILL
-            paint.color = Color.argb(45, 55, 164, 159)
-            canvas.drawRect(xAt(a), center - maxAmplitude - context.dp(5),
-                xAt(b), center + maxAmplitude + context.dp(5), paint)
+        if (a != null && b != null && b > a) {
+            val start = maxOf(a, window.startMs)
+            val end = minOf(b, window.endMs)
+            if (start < end) {
+                paint.style = Paint.Style.FILL
+                paint.color = Color.argb(45, 55, 164, 159)
+                canvas.drawRect(xFor(start, window), middle - heightScale,
+                    xFor(end, window), middle + heightScale, paint)
+            }
         }
 
         val levels = waveform?.levels
         if (levels != null && levels.isNotEmpty()) {
+            val barCount = max(1, (span / context.dp(3).coerceAtLeast(2)).toInt())
             paint.style = Paint.Style.STROKE
             paint.strokeCap = Paint.Cap.ROUND
-            paint.strokeWidth = max(1f, widthPx / levels.size * 0.78f)
-            val progressFraction = WaveformMath.fractionAtMillis(positionMs, durationMs)
-            for (index in levels.indices) {
-                val fraction = (index + 0.5f) / levels.size
-                val x = left + fraction * widthPx
-                val level = (levels[index].toInt() and 0xFF) / 255f
-                val half = max(minimumBar, maxAmplitude * level)
-                paint.color = if (fraction <= progressFraction) teal else muted
-                canvas.drawLine(x, center - half, x, center + half, paint)
+            paint.strokeWidth = max(1f, span / barCount * 0.75f)
+            for (bar in 0 until barCount) {
+                val startMs = window.startMs + bar.toLong() * window.lengthMs / barCount
+                val endMs = window.startMs + (bar + 1L) * window.lengthMs / barCount
+                val first = (startMs / WaveformMath.BIN_DURATION_MS)
+                    .toInt().coerceIn(0, levels.lastIndex)
+                val last = (endMs / WaveformMath.BIN_DURATION_MS)
+                    .toInt().coerceIn(first, levels.lastIndex)
+                var peak = 0
+                for (index in first..last) peak = maxOf(peak, levels[index].toInt() and 255)
+                val x = l + (bar + 0.5f) * span / barCount
+                val half = max(context.dp(1).toFloat(), heightScale * peak / 255f)
+                paint.color = if (endMs <= displayedPosition()) teal else muted
+                canvas.drawLine(x, middle - half, x, middle + half, paint)
             }
         }
 
-        fun drawMarker(markerMs: Long?, label: String, color: Int) {
-            if (markerMs == null || durationMs <= 0L) return
-            val x = xAt(markerMs)
-            paint.color = color
-            paint.strokeWidth = context.dp(2).toFloat()
+        fun marker(time: Long?, label: String, color: Int) {
+            if (time == null || time !in window.startMs..window.endMs) return
+            val x = xFor(time, window)
             paint.style = Paint.Style.STROKE
-            canvas.drawLine(x, context.dp(6).toFloat(),
-                x, height - context.dp(6).toFloat(), paint)
+            paint.strokeWidth = context.dp(1).toFloat()
+            paint.color = color
+            canvas.drawLine(x, context.dp(5).toFloat(),
+                x, height - context.dp(18).toFloat(), paint)
             paint.style = Paint.Style.FILL
             paint.textSize = labelSize
-            val textWidth = paint.measureText(label)
-            val textX = (x + context.dp(4)).coerceIn(left, right - textWidth)
-            canvas.drawText(label, textX, context.dp(15).toFloat(), paint)
+            canvas.drawText(label,
+                (x + context.dp(3)).coerceIn(l, r - paint.measureText(label)),
+                context.dp(14).toFloat(), paint)
         }
+        marker(pointA, "A", markerAColor)
+        marker(pointB, "B", markerBColor)
 
-        drawMarker(pointA, "A", markerAColor)
-        drawMarker(pointB, "B", markerBColor)
+        paint.color = ink
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = context.dp(1).toFloat()
+        val x = xFor(displayedPosition(), window)
+        canvas.drawLine(x, 0f, x, height - context.dp(17).toFloat(), paint)
 
-        if (durationMs > 0L) {
-            paint.color = playheadColor
-            paint.strokeWidth = context.dp(1).toFloat()
-            paint.style = Paint.Style.STROKE
-            val x = xAt(positionMs)
-            canvas.drawLine(x, 0f, x, height.toFloat(), paint)
-        }
-    }
-
-    private fun findMarker(touchX: Float): Marker? {
-        if (durationMs <= 0L) return null
-        val candidates = listOfNotNull(
-            pointA?.let { Marker.A to abs(touchX - xAt(it)) },
-            pointB?.let { Marker.B to abs(touchX - xAt(it)) }
+        paint.style = Paint.Style.FILL
+        paint.color = Color.rgb(91, 105, 109)
+        paint.textSize = labelSize
+        fun timeLabel(ms: Long): String = String.format(
+            java.util.Locale.US, "%d:%02d", ms / 60_000L, ms / 1_000L % 60L
         )
-        return candidates.minByOrNull { it.second }?.takeIf { it.second < closeEnough }?.first
+        val endLabel = timeLabel(window.endMs)
+        canvas.drawText(timeLabel(window.startMs), l,
+            height - context.dp(4).toFloat(), paint)
+        canvas.drawText(endLabel, r - paint.measureText(endLabel),
+            height - context.dp(4).toFloat(), paint)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -175,52 +182,57 @@ class WaveformView(
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 parent?.requestDisallowInterceptTouchEvent(true)
+                tracking = true
+                dragging = false
                 downX = event.x
                 downY = event.y
-                grabbed = findMarker(event.x)
-                dragged = false
-                longPressed = false
-                removeCallbacks(longPressRunnable)
-                if (grabbed == null) {
-                    postDelayed(longPressRunnable, ViewConfiguration.getLongPressTimeout().toLong())
-                }
+                originalPosition = positionMs
+                previewPosition = positionMs
+                dragWindow = viewport()
+                lastSeekAt = 0L
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
-                if (abs(event.x - downX) > slop || abs(event.y - downY) > slop) {
-                    dragged = true
-                    removeCallbacks(longPressRunnable)
-                }
-                val marker = grabbed
-                if (marker != null && dragged) {
-                    onMarkerChanged(marker, timeForX(event.x), false)
+                if (!tracking) return false
+                val dx = event.x - downX
+                val dy = event.y - downY
+                if (!dragging && abs(dx) > slop && abs(dx) >= abs(dy)) dragging = true
+                if (dragging) {
+                    previewPosition = WaveformMath.swipedPosition(
+                        originalPosition, dx, right() - left(),
+                        dragWindow.lengthMs, durationMs
+                    )
+                    invalidate()
+                    val now = SystemClock.elapsedRealtime()
+                    if (now - lastSeekAt >= SEEK_THROTTLE_MS) {
+                        onSeek(previewPosition)
+                        lastSeekAt = now
+                    }
                 }
                 return true
             }
             MotionEvent.ACTION_UP -> {
-                removeCallbacks(longPressRunnable)
-                val marker = grabbed
-                if (!longPressed) {
-                    if (marker != null && dragged) {
-                        onMarkerChanged(marker, timeForX(event.x), true)
-                    } else if (marker == null) {
-                        onSeek(timeForX(event.x))
-                    }
+                if (!tracking) return false
+                val tap = !dragging && abs(event.x - downX) <= slop &&
+                    abs(event.y - downY) <= slop
+                val longHold = event.eventTime - event.downTime >=
+                    ViewConfiguration.getLongPressTimeout()
+                val wasDragging = dragging
+                val result = if (dragging) previewPosition else timeAt(event.x, dragWindow)
+                tracking = false
+                dragging = false
+                if (wasDragging || tap && !longHold) {
+                    positionMs = result
+                    onSeek(result)
+                    if (tap) performClick()
                 }
-                grabbed = null
-                performClick()
+                invalidate()
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
-                removeCallbacks(longPressRunnable)
-                // Release marker-edit mode even if Android interrupts the drag,
-                // e.g. when a system gesture or dialog takes ownership.
-                val marker = grabbed
-                if (marker != null && dragged) {
-                    onMarkerChanged(marker, timeForX(event.x), true)
-                }
-                grabbed = null
-                dragged = false
+                tracking = false
+                dragging = false
+                invalidate()
                 return true
             }
         }
@@ -230,10 +242,5 @@ class WaveformView(
     override fun performClick(): Boolean {
         super.performClick()
         return true
-    }
-
-    override fun onDetachedFromWindow() {
-        removeCallbacks(longPressRunnable)
-        super.onDetachedFromWindow()
     }
 }

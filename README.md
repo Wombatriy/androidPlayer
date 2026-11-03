@@ -434,65 +434,69 @@ Vertical list scrolling, buttons, SeekBars, text input, dropdowns and
 Background playback and Android Back behavior remain in stage 09.
 GitHub Actions is manual-only and must not be automatically dispatched.
 
-## Iteration 08 — waveform preview and visual A–B editor
+## Iteration 08 — zoomed waveform and swipe seeking
 
-Player now contains a **compact waveform** above the familiar position seek bar.
-It shows the amplitude envelope for the full song, the current playhead,
-and draggable colored **A/B markers**. The selected loop interval is shaded.
+The Player waveform is now a **zoomed local timeline**, not a scaled-down
+picture of an entire song. The default visible range is **10 seconds before
+and 10 seconds after the current playback position** (20 seconds total).
+At the beginning or end of a track the window shifts to stay inside the file.
+For a track shorter than 20 seconds, the complete track is shown.
 
-- **Tap** the waveform to seek to that time (subject to the normal existing
-  A–B loop bounds).
-- **Long-press** the waveform at a desired position to choose **Set A here**
-  or **Set B here**.
-- **Drag** the A or B vertical marker to move it; while dragging, the
-  player does not repeatedly force a seek. On release, it validates the
-  playback position against the new loop range.
-- The existing A, B and Clear-loop buttons remain unchanged and stay in
-  sync with the waveform. The normal SeekBar still works.
+**To change zoom:** edit the one constant
+`WaveformView.WINDOW_RADIUS_SECONDS = 10L`.
+For example, `5L` shows 10 seconds in total; `15L` shows 30 seconds.
 
-### Background processing and cache
+### Waveform gestures
 
-A single low-priority worker decodes PCM into **512 peak amplitude buckets**.
-No full-song PCM buffer is retained, even for a long song. The lightweight
-waveform rendering uses the cached buckets and updates with normal playback
-ticks. Files in the app-private `filesDir/waveforms-v1` cache contain only the
-waveform data (~528 bytes per song) with atomic writes, hashed by SAF URI.
-Saved files can be reused after restarting the app.
+- **Swipe left over the waveform → go forward through the song.**
+- **Swipe right over the waveform → go backward.**
+- **Tap inside the displayed waveform → seek to that precise local timestamp.**
+- **Long-press does nothing**, so it cannot accidentally change A or B.
+- A/B markers are only **thin visual lines** and do not intercept touches.
+  Set A/B with the existing **A** and **B** buttons; Clear removes the loop.
+- Swipes on other non-interactive content still switch Player, Library,
+  Playlists and Queue. `TabSwipeNavigator` explicitly excludes
+  `WaveformView` to avoid any conflict.
 
-The decoder is coordinated with BPM analysis: **at most two active audio
-decoders in total**, and only one waveform job at a time. Choosing another
-song cancels the prior waveform task; obsolete results never appear on the
-new song. A failed/unsupported waveform never prevents playback.
+The waveform follows your finger while scrubbing; actual player seeks are
+throttled to roughly **80 ms** between commands, plus a final seek on release,
+rather than overwhelming Media3 with a seek every touch event. An A/B loop
+still constrains seeks to the active loop interval as before.
 
-As a resource-safety limit, the initial implementation does not generate a
-waveform for songs **longer than 25 minutes** or decoding jobs taking over
-120 seconds. It shows a small explanatory status instead. The song itself
-still plays normally, including all playlist and loop controls.
+### Higher-resolution waveform, compact cache
 
-### Loop timing
+The waveform now samples one peak every **50 milliseconds** of audio.
+A 20-second viewport can contain **400 peak values**, instead of only a
+handful when 512 peaks were spread across the entire file. Drawing only
+the visible window keeps each screen refresh lightweight.
 
-The active A–B loop is checked every **~25 ms**, while ordinary UI updates
-remain about every **120 ms**. This reduces overshooting point B compared
-to the prior 120 ms checks, but standard Media3 seeks are **not sample-accurate
-or guaranteed seamless**. Sample-accurate audio loops remain future DSP work.
+Data is stored in `filesDir/waveforms-v2` with an atomic versioned format:
+~4.8 KB for four minutes, no more than ~30 KB for 25 minutes. The old
+`waveforms-v1` cache is intentionally not reused: each visited song needs
+**one background re-analysis after this update**, then loads quickly again.
+No PCM audio is kept in memory. Only one waveform worker runs at a time,
+sharing a maximum of two active decoders with BPM and Batch BPM.
 
-### Check on the phone
-1. Play a new MP3/FLAC track: waveform should appear after background
-   processing without affecting Play/Pause, speed or scrolling.
-2. Play the same song again / restart the app and open it again: the cached
-   waveform should appear much faster, without another full decode.
-3. Tap a waveform position, long-press to set A/B, and drag the markers
-   both ways; the A/B times and shaded region must remain synchronized.
-4. Enable an A–B loop, try seeking before A and after B, and listen for
-   earlier loop return near B without undue buffering or audible glitches.
-5. Run Batch BPM concurrently with waveform calculation; the phone should
-   remain responsive and not start excessive parallel decoders.
-6. Rapidly select multiple songs; older waveforms must never flash over
-   the newly selected song.
-7. Change tabs by swiping, adjust speed and the SeekBar, and drag a marker:
-   no conflict with gesture navigation or playlist drag/drop.
-8. Check very long or unsupported files: waveform may be unavailable but
-   playback and the rest of Player must work.
+The existing 25-minute track limit and 120-second decode timeout remain.
+Even when a waveform cannot be generated, playback is unaffected.
 
-Android Back / media session / background playback remain stage 09.
-GitHub Actions remains manual-only and was not triggered.
+### Device checks
+1. Play a song of several minutes: verify that the waveform shows only
+   about 20 seconds with visible changes in amplitude, and moves with
+   playback rather than shrinking the whole song.
+2. Swipe **left** on the waveform: the music advances. Swipe **right**:
+   rewind. Swiping over a waveform must not change the app tab.
+3. Tap a beat/pause near the middle of the displayed local window and
+   verify precise seeking. Try repeated short swipes and long holds.
+4. Press the ordinary **A** and **B** buttons: narrow markers should
+   appear if within the visible window; no long-press gesture changes them.
+5. Turn on an A/B loop and verify that the highlighted range and seek
+   constraints still work.
+6. Play the same file again or reopen after a full restart: the cached
+   high-resolution wave should appear without a full decode.
+7. Perform Batch BPM detection while loading a new waveform, then
+   verify responsive playback, UI and tab swipes elsewhere.
+8. Test a short track, seek near the end, and try unsupported/long media.
+
+Android Back, MediaSessionService and background playback remain stage 09.
+GitHub Actions is manual-only and was not run automatically.

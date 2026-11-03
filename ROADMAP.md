@@ -132,19 +132,22 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [ ] Verify drag/drop hit zones, long-list auto-scroll and swipe conflicts on a real Android device
 - [ ] Future: Android Back source-aware history once playback is service-owned (stage 09)
 
-## 08 — Waveform preview and A–B marker editor (PR #11)
-- [x] Decode full-track PCM peaks into a small 512-bin waveform on one background worker; never hold full PCM in memory
-- [x] Persist waveforms as ~528-byte atomic files keyed by SHA-256 of the SAF URI, across app restarts
-- [x] Do not restart a waveform decode when opening the same URI again; drop stale results after track selection
-- [x] Use the same fair two-slot codec semaphore for foreground BPM, batch BPM and waveform decoding
-- [x] Display a lightweight waveform in Player with elapsed playhead and A/B loop-shaded region
-- [x] Tap waveform to seek; long-press to place A/B; drag existing A/B markers without repeated forced seeks
-- [x] Show and update waveform alongside existing SeekBar and A/B transport buttons (no changes to playlist/Queue)
-- [x] Check A–B loop boundaries every ~25 ms when playing, but limit UI playback position redraws to ~120 ms
-- [x] Add JVM tests for time-to-bin conversion, amplitude normalization and boundary handling
-- [ ] Validate real-device display, codec support and loop timing, especially on slow phones and long tracks
-- [ ] Future: sample-accurate gapless A–B editing (requires DSP-level loop control, not periodic ExoPlayer seek)
-- [ ] Future: optional waveform caching of files longer than 25 minutes, with careful background resource management
+## 08 — Local waveform with swipe seeking (PR #11)
+- [x] Build and cache waveform asynchronously using MediaCodec/MediaExtractor and one background worker
+- [x] Share the fair two-decoder limit with foreground/Batch BPM to keep the player responsive
+- [x] Improve sample resolution to one amplitude bucket per **50 ms** instead of 512 buckets for the whole track
+- [x] Persist version-2 waveform cache atomically, up to ~30 KB for 25-minute songs; old low-resolution cache is recalculated once
+- [x] Show only a configurable local window around playback (**±10 seconds by default**, see `WaveformView.WINDOW_RADIUS_SECONDS`)
+- [x] Keep a playhead and thin, read-only A/B loop markers; shaded region is clipped to the visible window
+- [x] Swipe waveform **left to advance**, **right to rewind**; throttle seeks (~80 ms), keep the waveform moving with the finger
+- [x] Tap within the visible waveform to seek precisely; no waveform long-press menu or marker dragging
+- [x] Set loop points A and B exclusively with existing Player buttons; Clear-loop continues to work as before
+- [x] Prevent waveform swipes from switching app tabs; other tab gestures remain unchanged
+- [x] Maintain ~25 ms loop-boundary checks while keeping UI position updates near ~120 ms
+- [x] JVM tests for local window edge clamping, time mapping, swipe direction/bounds, bin resolution and amplitude normalization
+- [ ] Verify real-device zoomed waveform, seek responsiveness, waveform caching and no gesture conflicts
+- [ ] Future: sample-accurate gapless A–B loop editing (requires DSP-level loop control)
+- [ ] Future: support waveform previews beyond 25 minutes with careful resource caps
 
 ## 09 — Background playback, lock-screen controls and Android Back
 - [ ] Extract ExoPlayer from Activity into a persistent foreground MediaSessionService

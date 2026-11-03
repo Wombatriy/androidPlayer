@@ -40,17 +40,7 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
     private val errorLabel = context.textLine()
     private val positionLabel = context.textLine("00:00 / 00:00")
     private val positionBar = SeekBar(context)
-    private val waveformView = WaveformView(
-        context,
-        onSeek = playback::seekTo,
-        onMarkerChanged = { marker, at, finalize ->
-            when (marker) {
-                WaveformView.Marker.A -> playback.setAAt(at, finalize)
-                WaveformView.Marker.B -> playback.setBAt(at, finalize)
-            }
-        },
-        onLongPressAt = ::showWaveformMarkerMenu
-    )
+    private val waveformView = WaveformView(context, onSeek = playback::seekTo)
     private val waveformStatus = context.textLine("", 12f).apply {
         visibility = View.GONE
         setTextColor(Color.rgb(91, 105, 109))
@@ -281,17 +271,6 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
                 " (${result.source.caption})$adjusted"
         }
         bpmPanel?.refresh()
-    }
-
-    /** Long-press a location on the waveform to place either loop endpoint. */
-    private fun showWaveformMarkerMenu(timeMs: Long) {
-        AlertDialog.Builder(context)
-            .setTitle("Set marker at ${format(timeMs)}")
-            .setItems(arrayOf("Set A here", "Set B here")) { _, choice ->
-                if (choice == 0) playback.setAAt(timeMs)
-                else playback.setBAt(timeMs)
-            }
-            .show()
     }
 
     private fun cycleEndMode() {
