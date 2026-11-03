@@ -10,8 +10,8 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Loads an instant local snapshot or scans SAF on one worker thread.
- * Only the newest request is delivered; old scans cannot replace newer data.
+ * One background lane for cache reads and SAF scans.
+ * Progress + results from an obsolete folder selection are discarded.
  */
 class LibraryRepository(context: Context) {
     data class Snapshot(val tracks: List<Track>, val fromCache: Boolean)
@@ -22,22 +22,36 @@ class LibraryRepository(context: Context) {
     private val mainThread = Handler(Looper.getMainLooper())
     private val generation = AtomicInteger()
 
-    fun load(folder: Uri, forceRefresh: Boolean, onLoaded: (Result<Snapshot>) -> Unit) {
-        val request = generation.incrementAndGet()
+    fun load(
+        folder: Uri,
+        forceRefresh: Boolean,
+        onProgress: (MusicFolder.ScanProgress) -> Unit = {},
+        onLoaded: (Result<Snapshot>) -> Unit
+    ) {
+        val token = generation.incrementAndGet()
         executor.execute {
             val result = runCatching {
                 val cached = if (forceRefresh) null else cache.read(folder)
                 if (cached != null) {
                     Snapshot(cached, fromCache = true)
                 } else {
-                    val fresh = MusicFolder.load(appContext, folder)
-                    // Snapshot failure must not invalidate a successful scan.
-                    if (generation.get() == request) runCatching { cache.write(folder, fresh) }
+                    val fresh = MusicFolder.load(
+                        appContext,
+                        folder,
+                        onProgress = { progress ->
+                            mainThread.post {
+                                if (generation.get() == token) onProgress(progress)
+                            }
+                        },
+                        cancelled = { generation.get() != token }
+                    )
+                    // Never replace the snapshot with a cancelled partial scan.
+                    if (generation.get() == token) runCatching { cache.write(folder, fresh) }
                     Snapshot(fresh, fromCache = false)
                 }
             }
             mainThread.post {
-                if (generation.get() == request) onLoaded(result)
+                if (generation.get() == token) onLoaded(result)
             }
         }
     }

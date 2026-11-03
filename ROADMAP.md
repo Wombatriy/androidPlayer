@@ -64,10 +64,19 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [ ] Validate detection quality on real swing/jazz/pop/dance tracks on a phone
 - [ ] Consider spectral-flux or a more accurate onset model if rhythmic confidence is low
 
-## 04 — Batch BPM
-- [ ] Automatically process newly added tracks and playlists
-- [ ] Cache BPM, source and confidence; mark rows by source color
-- [ ] Progress, cancel, retry and batch scheduling
+## 04 — Batch BPM and scan progress (PR #7)
+- [x] Explicit **Batch BPM** action in Library, with Cancel and determinate progress
+- [x] Analyze missing detected BPM even when filename has a BPM prefix; keep filename/manual priority
+- [x] Skip previously saved detected results, so interrupted batches resume without repeating work
+- [x] Limit concurrent MediaCodec decoders to **two total**, including foreground one-track analysis
+- [x] Decode off the UI thread, persist results in small durable batches and throttle progress updates
+- [x] Color-code BPM provenance in recycled Library rows (F filename, D detected, M manual)
+- [x] Show scanned-file count and indeterminate progress during both initial folder pick and Rescan
+- [x] Keep library scroll position, playback controls and saved cache behavior unchanged
+- [x] Add JVM policy tests for skipping saved detections and progress arithmetic
+- [ ] Verify real-device performance with hundreds/thousands of tracks, playback running, cancellation and retry
+- [ ] Future: optional auto-enqueue newly added tracks on Rescan and playlist additions (user opt-in)
+- [ ] Future: stronger audio onset model when detection confidence is low
 
 ## 05 — Safe rename
 - [ ] Preview `BPM - Artist - Track.ext`

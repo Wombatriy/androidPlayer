@@ -62,6 +62,27 @@ class BpmRepository(context: Context) {
         save(track, ".detected", record)
     }
 
+    /**
+     * Save several detections with one SharedPreferences transaction.
+     * Called ONLY by batch workers; commit() deliberately blocks the worker
+     * until data is durable, never the main UI thread.
+     */
+    fun saveDetectedBatch(records: Map<Track, BpmRecord>): Boolean {
+        if (records.isEmpty()) return true
+        val editor = prefs.edit()
+        for ((track, record) in records) {
+            require(record.source == BpmSource.DETECTED)
+            require(record.bpm.isFinite() && record.bpm in 20.0..800.0)
+            val data = JSONObject()
+                .put("bpm", record.bpm)
+                .put("source", record.source.name)
+            record.confidence?.let { data.put("confidence", it) }
+            record.alternative?.let { data.put("alternative", it) }
+            editor.putString(key(track) + ".detected", data.toString())
+        }
+        return editor.commit()
+    }
+
     fun clearManual(track: Track) {
         val base = key(track)
         val editor = prefs.edit().remove(base + ".manual")

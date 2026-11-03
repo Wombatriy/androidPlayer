@@ -193,3 +193,63 @@ or copied music). Background MediaSessionService is planned to keep playback
 running after Android Back closes the Activity, with lock-screen controls.
 
 GitHub Actions remains manual-only and has not been dispatched for this PR.
+
+## Iteration 04 — large-library BPM and scan progress
+
+The Library tab has **Choose folder | Rescan | Batch BPM**. The old redundant
+`Music Library` heading is removed. The main tab bar is separated from
+content by two narrow dark rules with a light gap, matching the requested
+mock-up.
+
+### Folder scans
+Both **Choose folder** (first import or new folder) and **Rescan** use one SAF
+scanner on a background executor. A thin **indeterminate progress bar** and a
+live count of files/folders visited appear while scanning. SAF does not expose
+an advance total for arbitrary directory trees, so showing a percent for
+scanning would be misleading. Once enumeration completes, the regular
+library snapshot and scroll restoration are retained. Relaunch still loads
+the cached snapshot without scanning.
+
+### Batch BPM
+Tap **Batch BPM** to analyze the current library snapshot. The button changes
+to **Cancel BPM**, and a **determinate progress bar** shows completed/total.
+A compact status line shows how many tracks were detected, skipped because
+a detection was already saved, and failed. The operation is deliberately
+**user-triggered**, not launched automatically at startup or after Rescan.
+
+The batch runs on up to **two worker decoders**, bounded by a semaphore shared
+with foreground one-track detection. This limits contention with playback
+and other phone tasks. Source lookups, decoder work and metadata writes stay
+off the UI thread. Detected records are committed in groups of six to reduce
+disk operations; UI updates are grouped and progress is throttled.
+
+A previously detected track is skipped even if it also has a filename BPM.
+A filename BPM **does not** mean the song has been analyzed. Filename/manual
+priority remains intact; batch analysis never overwrites a manual override.
+Canceled or interrupted jobs can be restarted, and previously saved detections
+will be skipped. Failed/unreadable tracks can be retried.
+
+Library BPM badges: **F** (teal) = filename, **D** (blue) = detected estimate,
+**M** (amber) = manual. Rows remain recycled ListView items; no disk/codec work
+is performed by a row renderer.
+
+### Suggested phone checks
+1. Choose a fresh folder and confirm the scan progress indicator and found
+   count, then press Rescan and confirm the same behavior.
+2. Start Batch BPM on a large folder and verify the progress advances while
+   playback and navigation remain responsive.
+3. Stop halfway through, restart Batch BPM, and confirm previously detected
+   tracks count as saved/skipped rather than being decoded again.
+4. Verify colored F/D/M badges and that filename BPM is still preferred over
+   a detected estimate in Player. Manual corrections must keep priority.
+5. Restart the app: the cached library and BPM data must reappear without
+   rescanning or reanalyzing already-processed tracks.
+6. Leave Batch BPM running during playback, A–B looping, speed changes and
+   navigating tabs. Watch battery/heat; mobile hardware differs.
+
+The current batch is owned by the Activity, not a foreground service: closing
+the app interrupts it (partial committed results survive). Long-running
+background processing is a separate MediaSessionService/work scheduling
+consideration for a future step.
+
+GitHub Actions remains manual-only and was not automatically dispatched.

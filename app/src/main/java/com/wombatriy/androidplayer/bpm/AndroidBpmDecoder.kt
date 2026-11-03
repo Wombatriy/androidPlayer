@@ -10,6 +10,7 @@ import android.os.SystemClock
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.CancellationException
+import java.util.concurrent.Semaphore
 import kotlin.math.sqrt
 
 /**
@@ -18,6 +19,18 @@ import kotlin.math.sqrt
  */
 class AndroidBpmDecoder(private val context: Context) {
     fun analyze(uri: Uri, cancelled: () -> Boolean): BeatEstimator.Estimate? {
+        // This semaphore is shared by batch AND foreground track analysis.
+        // Do not open more than two hardware/software codecs at once.
+        decoderSlots.acquire()
+        try {
+            if (cancelled()) throw CancellationException("BPM analysis cancelled")
+            return decode(uri, cancelled)
+        } finally {
+            decoderSlots.release()
+        }
+    }
+
+    private fun decode(uri: Uri, cancelled: () -> Boolean): BeatEstimator.Estimate? {
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
         var started = false
@@ -162,5 +175,6 @@ class AndroidBpmDecoder(private val context: Context) {
         private const val MAX_SECONDS = 70
         private const val MAX_AUDIO_US = MAX_SECONDS * 1_000_000L
         private const val TIMEOUT_MS = 35_000L
+        private val decoderSlots = Semaphore(2, true)
     }
 }

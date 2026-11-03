@@ -14,6 +14,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import com.wombatriy.androidplayer.bpm.BpmCoordinator
+import com.wombatriy.androidplayer.bpm.BpmBatchAnalyzer
 import com.wombatriy.androidplayer.library.LibraryRepository
 import com.wombatriy.androidplayer.player.PlaybackController
 import com.wombatriy.androidplayer.ui.LibraryScreen
@@ -33,7 +34,26 @@ class MainActivity : Activity() {
     private val prefs by lazy { getSharedPreferences("library", MODE_PRIVATE) }
     private val libraryRepository by lazy { LibraryRepository(this) }
     private val bpmCoordinator by lazy {
-        BpmCoordinator(this) { if (::playerScreen.isInitialized) playerScreen.refreshBpm() }
+        BpmCoordinator(this) {
+            if (::playerScreen.isInitialized) playerScreen.refreshBpm()
+            if (::libraryScreen.isInitialized) {
+                val selected = bpmCoordinator.track
+                if (selected != null) {
+                    libraryScreen.updateOneBpm(selected, bpmCoordinator.resolved())
+                }
+            }
+        }
+    }
+    private val batchAnalyzer by lazy {
+        BpmBatchAnalyzer(
+            this,
+            onState = { state ->
+                if (::libraryScreen.isInitialized) libraryScreen.updateBatchState(state)
+            },
+            onRowsChanged = { records, replace ->
+                if (::libraryScreen.isInitialized) libraryScreen.updateBpmRecords(records, replace)
+            }
+        )
     }
 
     private var activeTab = 1
@@ -81,12 +101,20 @@ class MainActivity : Activity() {
             }, LinearLayout.LayoutParams(0, dp(52), 1f))
         }
         root.addView(nav)
+        // Two narrow horizontal rules separated by a light gap, as in the mock-up.
+        root.addView(View(this).apply { setBackgroundColor(Color.rgb(18, 21, 25)) },
+            LinearLayout.LayoutParams(-1, dp(2)))
+        root.addView(View(this).apply { setBackgroundColor(Color.rgb(249, 250, 252)) },
+            LinearLayout.LayoutParams(-1, dp(3)))
+        root.addView(View(this).apply { setBackgroundColor(Color.rgb(18, 21, 25)) },
+            LinearLayout.LayoutParams(-1, dp(2)))
 
         playerScreen = PlayerScreen(this, playback, bpmCoordinator)
         libraryScreen = LibraryScreen(
             this,
             onChooseFolder = ::chooseFolder,
             onRescan = ::rescanSelectedFolder,
+            onBatchToggle = ::toggleBatchAnalysis,
             onTrackSelected = ::playTrack
         )
         pages = listOf(
@@ -199,6 +227,14 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun toggleBatchAnalysis() {
+        if (batchAnalyzer.state.running) {
+            batchAnalyzer.cancel()
+        } else {
+            batchAnalyzer.start(libraryScreen.tracksSnapshot())
+        }
+    }
+
     private fun loadLibrary(treeUri: Uri, forceRefresh: Boolean) {
         val hasReadGrant = contentResolver.persistedUriPermissions.any {
             it.uri == treeUri && it.isReadPermission
@@ -208,16 +244,26 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Folder access expired. Choose it again.", Toast.LENGTH_LONG).show()
             return
         }
+        // A folder selection or rescan invalidates the old batch queue.
+        batchAnalyzer.resetForLibraryChange()
         loadingFolder = true
         libraryScreen.setLoading(true)
         updateStatus()
 
-        libraryRepository.load(treeUri, forceRefresh) { result ->
+        libraryRepository.load(
+            treeUri,
+            forceRefresh,
+            onProgress = { progress ->
+                if (!isFinishing && !isDestroyed) libraryScreen.updateScanProgress(progress)
+            }
+        ) { result ->
             if (isFinishing || isDestroyed) return@load
             loadingFolder = false
             result.onSuccess { snapshot ->
                 loadedFromCache = snapshot.fromCache
                 libraryScreen.submitTracks(snapshot.tracks)
+                batchAnalyzer.refreshSources(snapshot.tracks)
+                libraryScreen.updateBatchState(batchAnalyzer.state)
             }.onFailure { error ->
                 libraryScreen.setLoading(false)
                 Toast.makeText(this, "Unable to load folder: ${error.message}", Toast.LENGTH_LONG).show()
@@ -253,6 +299,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        batchAnalyzer.close()
         bpmCoordinator.close()
         playback.release()
         libraryRepository.close()

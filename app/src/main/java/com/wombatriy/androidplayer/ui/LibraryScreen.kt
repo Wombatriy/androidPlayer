@@ -7,19 +7,28 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.BaseAdapter
+import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ListView
+import android.widget.ProgressBar
 import android.widget.TextView
+import com.wombatriy.androidplayer.MusicFolder
 import com.wombatriy.androidplayer.Track
+import com.wombatriy.androidplayer.bpm.BpmBatchAnalyzer
+import com.wombatriy.androidplayer.bpm.BatchBpmPolicy
+import com.wombatriy.androidplayer.bpm.BpmFormatting
+import com.wombatriy.androidplayer.bpm.BpmRecord
+import com.wombatriy.androidplayer.bpm.BpmSource
 
 /**
- * A long-lived tab backed by ListView's recycled rows.
- * Showing/hiding this tab never rebuilds rows or resets the scroll position.
+ * Retained library with recycled ListView rows. No file/BPM I/O runs in
+ * adapter.getView(): all metadata arrives as already-resolved maps.
  */
 class LibraryScreen(
     context: Context,
     onChooseFolder: () -> Unit,
     onRescan: () -> Unit,
+    onBatchToggle: () -> Unit,
     private val onTrackSelected: (Track) -> Unit
 ) : LinearLayout(context) {
     private val adapter = TrackAdapter(context)
@@ -27,49 +36,100 @@ class LibraryScreen(
         dividerHeight = context.dp(1)
         setBackgroundColor(Color.WHITE)
         isFastScrollEnabled = true
-        setOnItemClickListener { _, _, position, _ -> onTrackSelected(this@LibraryScreen.adapter.getItem(position)) }
+        setOnItemClickListener { _, _, position, _ ->
+            onTrackSelected(this@LibraryScreen.adapter.getItem(position))
+        }
     }
+    private val choose = compactButton("Choose folder", onChooseFolder)
+    private val rescan = compactButton("Rescan", onRescan)
+    private val batch = compactButton("Batch BPM", onBatchToggle)
+    private val scanProgress = thinBar(context, indeterminate = true)
+    private val bpmProgress = thinBar(context, indeterminate = false)
     private val info = context.textLine("Choose a music folder to begin.", 13f)
+    private val batchInfo = context.textLine("", 12f)
     private var restoreIndex: Int? = null
     private var restoreOffset = 0
+    private var scanning = false
 
     init {
         orientation = VERTICAL
         setBackgroundColor(Color.rgb(249, 250, 252))
         setPadding(context.dp(12), context.dp(8), context.dp(12), context.dp(8))
-        addView(context.textLine("Music Library", 23f))
 
+        // Deliberately omit the redundant 'Music Library' title.
         val actions = LinearLayout(context).apply { orientation = HORIZONTAL }
-        actions.addView(context.actionButton("Choose folder", onChooseFolder),
-            LayoutParams(0, -2, 1f))
-        actions.addView(context.actionButton("Rescan", onRescan),
-            LayoutParams(0, -2, 1f))
+        for (button in listOf(choose, rescan, batch)) {
+            actions.addView(button, LayoutParams(0, -2, 1f))
+        }
         addView(actions)
+
+        scanProgress.visibility = GONE
+        bpmProgress.visibility = GONE
+        bpmProgress.max = 1000
+        addView(scanProgress, LayoutParams(-1, context.dp(5)))
+        addView(bpmProgress, LayoutParams(-1, context.dp(5)))
         addView(info)
+        batchInfo.visibility = GONE
+        addView(batchInfo)
         list.adapter = adapter
         addView(list, LayoutParams(-1, 0, 1f))
+        batch.isEnabled = false
     }
+
+    private fun compactButton(caption: String, action: () -> Unit): Button =
+        context.actionButton(caption, action).apply {
+            minWidth = 0
+            minimumWidth = 0
+            textSize = 12f
+            setPadding(0, 0, 0, 0)
+        }
+
+    private fun thinBar(context: Context, indeterminate: Boolean): ProgressBar =
+        ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
+            isIndeterminate = indeterminate
+        }
 
     val trackCount: Int get() = adapter.count
     fun tracksSnapshot(): List<Track> = adapter.snapshot()
     val firstVisibleIndex: Int get() = list.firstVisiblePosition
     val firstVisibleOffset: Int get() = list.getChildAt(0)?.top ?: 0
 
-    /** Restore after an Activity recreation, once tracks are scanned again. */
     fun restorePosition(index: Int, offsetPx: Int) {
         restoreIndex = index.coerceAtLeast(0)
         restoreOffset = offsetPx
     }
 
     fun setLoading(loading: Boolean) {
-        info.text = if (loading) "Scanning folder…" else {
+        scanning = loading
+        scanProgress.visibility = if (loading) VISIBLE else GONE
+        rescan.isEnabled = !loading
+        batch.isEnabled = !loading && adapter.count > 0
+        info.text = if (loading) "Reading music folder…" else {
             if (adapter.count == 0) "No audio files found. Choose a folder to begin."
             else "${adapter.count} tracks • tap to play"
         }
     }
 
+    fun updateScanProgress(progress: MusicFolder.ScanProgress) {
+        if (!scanning) return
+        info.text = "Found ${progress.filesFound} audio files in ${progress.foldersVisited} folders…"
+    }
+
+    fun updateBatchState(state: BpmBatchAnalyzer.State) {
+        batch.text = if (state.running) "Cancel BPM" else "Batch BPM"
+        batch.isEnabled = state.running || (!scanning && adapter.count > 0)
+        bpmProgress.visibility = if (state.running) VISIBLE else GONE
+        bpmProgress.progress = if (state.total > 0) {
+            BatchBpmPolicy.progressThousand(state.processed, state.total)
+        } else 0
+        batchInfo.visibility = if (state.running || state.message.isNotBlank()) VISIBLE else GONE
+        batchInfo.text = if (state.total > 0) {
+            "${state.message}  ${state.processed}/${state.total} · " +
+                "${state.detected} detected · ${state.skipped} saved · ${state.failed} failed"
+        } else state.message
+    }
+
     fun submitTracks(tracks: List<Track>) {
-        // Keep the visible anchor across a rescan, even if the adapter changes.
         val index = restoreIndex ?: list.firstVisiblePosition
         val offset = if (restoreIndex != null) restoreOffset else firstVisibleOffset
         adapter.submit(tracks)
@@ -79,13 +139,40 @@ class LibraryScreen(
         setLoading(false)
     }
 
+    /** Initial metadata replaces the snapshot; decoded chunks update existing rows. */
+    fun updateBpmRecords(records: Map<String, BpmRecord>, replace: Boolean = false) {
+        adapter.updateBpm(records, replace)
+    }
+
+    /** Update exactly one track's badge after a foreground manual/detected change. */
+    fun updateOneBpm(track: Track, record: BpmRecord?) {
+        adapter.updateOne(track.uri.toString(), record)
+    }
+
     private class TrackAdapter(private val context: Context) : BaseAdapter() {
         private var items: List<Track> = emptyList()
+        private val bpmValues = HashMap<String, BpmRecord>()
+
         fun snapshot(): List<Track> = items
+
         fun submit(newItems: List<Track>) {
             items = newItems
+            bpmValues.clear()
             notifyDataSetChanged()
         }
+
+        fun updateBpm(rows: Map<String, BpmRecord>, replace: Boolean) {
+            if (replace) bpmValues.clear()
+            bpmValues.putAll(rows)
+            // Only visible recycled rows are rebound; this is not a full rebuild.
+            notifyDataSetChanged()
+        }
+
+        fun updateOne(uri: String, record: BpmRecord?) {
+            if (record == null) bpmValues.remove(uri) else bpmValues[uri] = record
+            notifyDataSetChanged()
+        }
+
         override fun getCount(): Int = items.size
         override fun getItem(position: Int): Track = items[position]
         override fun getItemId(position: Int): Long = position.toLong()
@@ -110,7 +197,6 @@ class LibraryScreen(
                 }
                 val bpm = TextView(context).apply {
                     textSize = 12f
-                    setTextColor(Color.rgb(16, 120, 105))
                     setPadding(context.dp(8), 0, 0, 0)
                 }
                 row.addView(name, LayoutParams(0, -2, 1f))
@@ -120,9 +206,25 @@ class LibraryScreen(
             }
             val track = getItem(position)
             holder.name.text = track.name
-            val bpm = track.filenameBpm
-            holder.bpm.visibility = if (bpm == null) GONE else VISIBLE
-            holder.bpm.text = if (bpm != null) "$bpm BPM" else ""
+            // Fallback to filename metadata while the background snapshot loads.
+            val record = bpmValues[track.uri.toString()]
+                ?: track.filenameBpm?.let { BpmRecord(it.toDouble(), BpmSource.FILENAME) }
+            holder.bpm.visibility = if (record == null) GONE else VISIBLE
+            if (record != null) {
+                val prefix = when (record.source) {
+                    BpmSource.FILENAME -> "F"
+                    BpmSource.DETECTED -> "D"
+                    BpmSource.MANUAL -> "M"
+                }
+                holder.bpm.text = "$prefix ${BpmFormatting.bpm(record.bpm)} BPM"
+                holder.bpm.setTextColor(when (record.source) {
+                    BpmSource.FILENAME -> Color.rgb(12, 128, 105)
+                    BpmSource.DETECTED -> Color.rgb(34, 92, 168)
+                    BpmSource.MANUAL -> Color.rgb(168, 92, 23)
+                })
+            } else {
+                holder.bpm.text = ""
+            }
             return row
         }
 
