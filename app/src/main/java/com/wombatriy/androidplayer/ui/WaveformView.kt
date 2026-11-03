@@ -89,8 +89,9 @@ class WaveformView(
             val compatible = ready.windowMs == visible.lengthMs &&
                 ready.viewWidth == (right() - left()).toInt() &&
                 ready.viewHeight == height
-            if (compatible && visible.startMs >= ready.startMs &&
-                visible.endMs <= ready.endMs) {
+            if (compatible && WaveformMath.tileCovers(
+                visible, WaveformMath.Window(ready.startMs, ready.endMs)
+            )) {
                 // Never swap in an obsolete tile from an earlier seek:
                 // it would make the current waveform disappear for a frame.
                 tile = ready
@@ -225,7 +226,14 @@ class WaveformView(
     fun setExternalScrubbing(active: Boolean) {
         if (externalScrubbing == active) return
         externalScrubbing = active
-        if (active) stopFrames() else refreshAnimationState()
+        if (active) {
+            stopFrames()
+        } else {
+            refreshAnimationState()
+            // At seek release request a final off-thread bitmap for this
+            // position, even if playback is paused and the ticker is static.
+            invalidate()
+        }
     }
 
     fun close() {
@@ -335,7 +343,9 @@ class WaveformView(
             current.viewWidth == contentWidth &&
             current.viewHeight == height && current.groupSize == size
         val covered = compatible && current != null &&
-            window.startMs >= current.startMs && window.endMs <= current.endMs
+            WaveformMath.tileCovers(
+                window, WaveformMath.Window(current.startMs, current.endMs)
+            )
         val needsPrefetch = if (!covered || current == null) {
             true
         } else {
