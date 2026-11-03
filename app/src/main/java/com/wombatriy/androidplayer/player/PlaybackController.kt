@@ -137,15 +137,28 @@ class PlaybackController(context: Context) {
         }
     }
 
+    /**
+     * React immediately to external play/pause (lock screen or headphones).
+     * Without this, after a background pause the next 1Hz tick could delay
+     * resuming A–B boundary checks for almost a second.
+     */
+    private fun wakeTicker() {
+        if (released) return
+        handler.removeCallbacks(ticker)
+        handler.post(ticker)
+    }
+
     init {
         player.addListener(object : Player.Listener {
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                wakeTicker()
                 notifyListeners { it.onPlaybackControlsChanged() }
             }
 
             // Resumes the waveform clock after buffering and stops it during
             // buffering, pause and track end without requiring the 120ms ticker.
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                wakeTicker()
                 notifyListeners { it.onPlaybackControlsChanged() }
             }
 
