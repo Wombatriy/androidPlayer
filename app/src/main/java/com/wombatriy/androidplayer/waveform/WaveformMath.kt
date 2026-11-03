@@ -112,6 +112,39 @@ object WaveformMath {
     }
 
     /**
+     * Align every background bitmap to the SAME absolute one-pixel time
+     * grid (time zero), regardless of where a 20s viewport happens to start.
+     *
+     * Without this, successive bitmap tiles resample the same 50ms peaks
+     * at slightly different phases; switching tiles subtly changes their
+     * silhouettes. A shared grid keeps overlapping waveform pixels identical.
+     */
+    data class RasterGrid(
+        val window: Window,
+        val firstPixel: Long,
+        val pixelCount: Int
+    )
+
+    fun rasterGrid(
+        viewport: Window, durationMs: Long, contentWidthPx: Int
+    ): RasterGrid {
+        if (viewport.lengthMs <= 0L || durationMs <= 0L || contentWidthPx <= 0) {
+            return RasterGrid(Window(0L, 0L), 0L, 0)
+        }
+        val padded = bufferedTileWindow(viewport, durationMs)
+        val pixelMs = viewport.lengthMs.toDouble() / contentWidthPx
+        val startPixel = kotlin.math.floor(padded.startMs / pixelMs)
+            .toLong().coerceAtLeast(0L)
+        val endPixel = kotlin.math.ceil(padded.endMs / pixelMs)
+            .toLong().coerceAtLeast(startPixel + 1)
+        val startMs = (startPixel * pixelMs).roundToLong().coerceIn(0L, durationMs)
+        val endMs = (endPixel * pixelMs).roundToLong().coerceIn(startMs, durationMs)
+        val columns = (endPixel - startPixel).toInt()
+            .coerceIn(1, contentWidthPx * 2 + 2)
+        return RasterGrid(Window(startMs, endMs), startPixel, columns)
+    }
+
+    /**
      * The two waveform colors share exactly one clip boundary. Keeping the
      * played and upcoming ranges disjoint prevents double alpha compositing
      * of green strokes over muted strokes as the waveform scrolls.
