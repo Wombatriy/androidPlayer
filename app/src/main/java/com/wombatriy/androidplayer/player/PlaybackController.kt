@@ -55,6 +55,8 @@ class PlaybackController(context: Context, private val listener: Listener) {
     val queueSize: Int get() = queue.size
     fun queueSnapshot(): List<Track> = queue.snapshot()
     val speed: Float get() = player.playbackParameters.speed
+    /** True only when ExoPlayer is actually advancing its media clock. */
+    val isPlaying: Boolean get() = player.isPlaying
     val currentPosition: Long get() = player.currentPosition.coerceAtLeast(0L)
     val duration: Long get() = player.duration.takeIf { it > 0L } ?: 0L
     val showsPause: Boolean get() =
@@ -94,6 +96,12 @@ class PlaybackController(context: Context, private val listener: Listener) {
     init {
         player.addListener(object : Player.Listener {
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                listener.onPlaybackControlsChanged()
+            }
+
+            // Resumes the waveform clock after buffering and stops it during
+            // buffering, pause and track end without requiring the 120ms ticker.
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
                 listener.onPlaybackControlsChanged()
             }
 
