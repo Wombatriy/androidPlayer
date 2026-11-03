@@ -52,6 +52,11 @@ class MainActivity : Activity() {
             },
             onRowsChanged = { records, replace ->
                 if (::libraryScreen.isInitialized) libraryScreen.updateBpmRecords(records, replace)
+                val playing = bpmCoordinator.track
+                if (playing != null && records.containsKey(playing.uri.toString()) &&
+                    ::playerScreen.isInitialized) {
+                    playerScreen.refreshBpm()
+                }
             }
         )
     }
