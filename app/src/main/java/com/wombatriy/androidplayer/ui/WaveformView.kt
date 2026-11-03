@@ -406,15 +406,20 @@ class WaveformView(
             WaveformMath.BIN_DURATION_MS * groupSize * widthPx / window.lengthMs * 0.82f)
         mutedFallbackPaint.strokeWidth = strokeWidth
         playedFallbackPaint.strokeWidth = strokeWidth
-        canvas.save()
-        canvas.clipRect(leftPx, 0f, rightPx, height.toFloat())
-        canvas.drawLines(fallbackSegments, 0, n, mutedFallbackPaint)
-        canvas.restore()
-        val progressPx = xFor(displayedPosition(), window).coerceIn(leftPx, rightPx)
+        val progressPx = WaveformMath.progressSplitX(
+            xFor(displayedPosition(), window), leftPx, rightPx
+        )
+        // Match the tiled renderer: green and muted strokes never overlap.
         if (progressPx > leftPx) {
             canvas.save()
             canvas.clipRect(leftPx, 0f, progressPx, height.toFloat())
             canvas.drawLines(fallbackSegments, 0, n, playedFallbackPaint)
+            canvas.restore()
+        }
+        if (progressPx < rightPx) {
+            canvas.save()
+            canvas.clipRect(progressPx, 0f, rightPx, height.toFloat())
+            canvas.drawLines(fallbackSegments, 0, n, mutedFallbackPaint)
             canvas.restore()
         }
     }
@@ -460,17 +465,21 @@ class WaveformView(
                     span / window.lengthMs).toFloat()
             val playhead = xFor(displayedPosition(), window)
 
-            // Off-thread rasterization: onDraw() never walks PCM bins or
-            // draws Paths. Two small bitmap draws with a clip are all that
-            // remain in the main-thread hot path.
-            canvas.save()
-            canvas.clipRect(l, 0f, r, height.toFloat())
-            canvas.drawBitmap(prepared.mutedBitmap, translationX, 0f, bitmapPaint)
-            canvas.restore()
-            if (playhead > l) {
+            // Played and upcoming sections are EXCLUSIVE. Drawing muted
+            // peaks under transparent, antialiased green peaks used to blend
+            // their alpha twice as the bitmap moved by fractional pixels.
+            // That made the already-played section shimmer on some GPUs.
+            val split = WaveformMath.progressSplitX(playhead, l, r)
+            if (split > l) {
                 canvas.save()
-                canvas.clipRect(l, 0f, playhead.coerceAtMost(r), height.toFloat())
+                canvas.clipRect(l, 0f, split, height.toFloat())
                 canvas.drawBitmap(prepared.playedBitmap, translationX, 0f, bitmapPaint)
+                canvas.restore()
+            }
+            if (split < r) {
+                canvas.save()
+                canvas.clipRect(split, 0f, r, height.toFloat())
+                canvas.drawBitmap(prepared.mutedBitmap, translationX, 0f, bitmapPaint)
                 canvas.restore()
             }
         } else if (waveform != null) {
