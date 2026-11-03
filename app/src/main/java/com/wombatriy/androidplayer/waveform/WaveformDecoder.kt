@@ -21,10 +21,20 @@ import kotlin.math.abs
  * WaveformCoordinator owns just one worker, so waveform itself is sequential.
  */
 class WaveformDecoder(private val context: Context) {
-    fun analyze(uri: Uri, cancelled: () -> Boolean): WaveformData =
-        AudioDecoderSlots.withPermit(cancelled) { decode(uri, cancelled) }
+    fun analyze(
+        uri: Uri,
+        cancelled: () -> Boolean,
+        onProgress: (Int) -> Unit = {}
+    ): WaveformData =
+        AudioDecoderSlots.withPermit(cancelled) {
+            decode(uri, cancelled, onProgress)
+        }
 
-    private fun decode(uri: Uri, cancelled: () -> Boolean): WaveformData {
+    private fun decode(
+        uri: Uri,
+        cancelled: () -> Boolean,
+        onProgress: (Int) -> Unit
+    ): WaveformData {
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
         var started = false
@@ -62,6 +72,9 @@ class WaveformDecoder(private val context: Context) {
                 var outputEnded = false
                 var sampleCount = 0L
                 val startedAt = SystemClock.elapsedRealtime()
+                var lastReportAt = startedAt
+                var lastProgress = -1
+                var decodedBuffers = 0
 
                 while (!outputEnded) {
                     if (cancelled() || Thread.currentThread().isInterrupted) {
@@ -113,6 +126,23 @@ class WaveformDecoder(private val context: Context) {
                                 }
                             } finally {
                                 decoder.releaseOutputBuffer(outputIndex, false)
+                            }
+                            // The full-track codec competes with ExoPlayer
+                            // for CPU, memory bandwidth, and possibly hardware
+                            // decoder resources. Yield regularly; never spin
+                            // at maximum speed just to generate a preview.
+                            decodedBuffers++
+                            if (decodedBuffers % 12 == 0) SystemClock.sleep(2L)
+                            val now = SystemClock.elapsedRealtime()
+                            if (now - lastReportAt >= 750L && durationUs > 0L) {
+                                val progress = (info.presentationTimeUs
+                                    .coerceAtLeast(0L).toDouble() / durationUs * 100.0)
+                                    .toInt().coerceIn(0, 99)
+                                if (progress > lastProgress) {
+                                    lastProgress = progress
+                                    onProgress(progress)
+                                }
+                                lastReportAt = now
                             }
                         }
                     }
