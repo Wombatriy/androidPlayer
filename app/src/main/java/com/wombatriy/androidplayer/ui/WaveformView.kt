@@ -20,7 +20,9 @@ import kotlin.math.max
  */
 class WaveformView(
     context: Context,
-    private val onSeek: (Long) -> Unit
+    private val onSeek: (Long) -> Unit,
+    private val playbackPosition: () -> Long,
+    private val playbackRunning: () -> Boolean
 ) : View(context) {
     companion object {
         /** Change this to 5 for a total 10-second window, or 15 for 30 seconds. */
@@ -50,6 +52,87 @@ class WaveformView(
     private var previewPosition = 0L
     private var dragWindow = WaveformMath.Window(0L, 0L)
     private var lastSeekAt = 0L
+    private var externalScrubbing = false
+    private var frameScheduled = false
+    private var stopped = false
+
+    /**
+     * PlayerScreen's normal ticker runs every ~120 ms. Use ExoPlayer's
+     * live media clock once per display frame for smooth waveform movement.
+     * This animates only the waveform, not the entire Player UI.
+     */
+    private val animationFrame = object : Runnable {
+        override fun run() {
+            frameScheduled = false
+            if (!canAnimate()) return
+            val current = playbackPosition().coerceAtLeast(0L)
+            if (positionMs != current) {
+                positionMs = current
+                postInvalidateOnAnimation()
+            }
+            scheduleFrame()
+        }
+    }
+
+    private fun canAnimate(): Boolean =
+        !stopped && isAttachedToWindow && isShown &&
+            !tracking && !externalScrubbing && waveform != null &&
+            durationMs > 0L && playbackRunning()
+
+    private fun scheduleFrame() {
+        if (!frameScheduled && canAnimate()) {
+            frameScheduled = true
+            postOnAnimation(animationFrame)
+        }
+    }
+
+    private fun stopFrames() {
+        if (frameScheduled) {
+            removeCallbacks(animationFrame)
+            frameScheduled = false
+        }
+    }
+
+    /** React to playing/paused, buffering and tab visibility changes. */
+    fun refreshAnimationState() {
+        if (canAnimate()) {
+            val current = playbackPosition().coerceAtLeast(0L)
+            if (current != positionMs) {
+                positionMs = current
+                invalidate()
+            }
+            scheduleFrame()
+        } else {
+            stopFrames()
+        }
+    }
+
+    /** The full-track SeekBar must win over waveform auto-animation. */
+    fun setExternalScrubbing(active: Boolean) {
+        if (externalScrubbing == active) return
+        externalScrubbing = active
+        if (active) stopFrames() else refreshAnimationState()
+    }
+
+    fun close() {
+        stopped = true
+        stopFrames()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        refreshAnimationState()
+    }
+
+    override fun onVisibilityAggregated(isVisible: Boolean) {
+        super.onVisibilityAggregated(isVisible)
+        if (isVisible) refreshAnimationState() else stopFrames()
+    }
+
+    override fun onDetachedFromWindow() {
+        stopFrames()
+        super.onDetachedFromWindow()
+    }
 
     init {
         minimumHeight = context.dp(100)
@@ -63,14 +146,22 @@ class WaveformView(
         waveform = value
         if (durationMs <= 0L && value != null) durationMs = value.durationMs
         invalidate()
+        refreshAnimationState()
     }
 
     fun setPlayback(position: Long, duration: Long) {
         val oldPosition = positionMs
         val oldDuration = durationMs
         durationMs = duration.takeIf { it > 0L } ?: waveform?.durationMs ?: 0L
-        if (!tracking) positionMs = position.coerceAtLeast(0L)
+        // Ignore the coarse (~120 ms) ticker position during normal playback.
+        // A stale ticker value must never snap the smooth animated timeline.
+        if (!tracking) {
+            positionMs = if (!externalScrubbing && playbackRunning()) {
+                playbackPosition().coerceAtLeast(0L)
+            } else position.coerceAtLeast(0L)
+        }
         if (oldPosition != positionMs || oldDuration != durationMs) invalidate()
+        refreshAnimationState()
     }
 
     fun setMarkers(a: Long?, b: Long?) {
@@ -202,6 +293,7 @@ class WaveformView(
             MotionEvent.ACTION_DOWN -> {
                 parent?.requestDisallowInterceptTouchEvent(true)
                 tracking = true
+                stopFrames()
                 dragging = false
                 downX = event.x
                 downY = event.y
@@ -246,12 +338,14 @@ class WaveformView(
                     if (tap) performClick()
                 }
                 invalidate()
+                refreshAnimationState()
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
                 tracking = false
                 dragging = false
                 invalidate()
+                refreshAnimationState()
                 return true
             }
         }
