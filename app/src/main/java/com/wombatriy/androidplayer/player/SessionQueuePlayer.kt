@@ -21,6 +21,14 @@ class SessionQueuePlayer(
     override fun seekToNextMediaItem() = playback.next()
     override fun seekToPreviousMediaItem() = playback.previous()
 
+    // System progress scrubbing must respect the same active A–B range and
+    // seek announcements as the in-app sliders and waveform.
+    override fun seekTo(positionMs: Long) = playback.seekTo(positionMs)
+
+    override fun seekTo(mediaItemIndex: Int, positionMs: Long) {
+        if (mediaItemIndex == 0) playback.seekTo(positionMs)
+    }
+
     // Advertise standard transport commands to Media3's notification and
     // lock-screen controller even though ExoPlayer decodes only one item.
     override fun getAvailableCommands(): Player.Commands =
