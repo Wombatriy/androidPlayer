@@ -524,6 +524,41 @@ slowly, then try changing speed and A–B loop. The background waveform
 calculation should not freeze the rest of the Player UI. If it still does,
 capture the `WaveformPerf` Logcat lines and the Android frame timeline.
 
+### Follow-up — stable solid envelope instead of flickering thin bars
+
+The previous exclusive-color clipping removed double alpha blending, but
+**green shimmer remained during normal playback** on the phone. The remaining
+likely cause is the high-frequency pattern of very thin antialiased peak
+strokes. Their partially transparent gaps move by fractions of a screen
+pixel, so the GPU interpolates their brightness differently every frame.
+
+The prepared bitmap now contains an **opaque, continuous filled amplitude
+envelope**: one full-width destination pixel column from the center line
+up and down to the maximum peak of all 50ms bins intersecting that pixel.
+This keeps each column opaque inside the waveform, including the played
+green region, while the bitmap itself can still slide subpixel-smoothly.
+It also retains very short transients that might fall between thin bars.
+
+The fast-scrub fallback now uses the same peak-per-pixel method, with
+pixel-aligned batched strokes to avoid switching back to a stripe pattern.
+Each background tile is also aligned to an **absolute pixel timeline
+starting at t=0**. Overlapping tiles therefore sample the same audio
+at the same source-pixel positions instead of shifting phase when a new
+tile is prepared. This prevents periodic shape/brightness changes as tiles
+replace each other.
+
+**Visual change:** the waveform is more of a solid audio-editor silhouette
+than a comb of separated vertical lines. Colors, A/B markers, zoom,
+scrub gestures, display cadence, background workers and the cached 50ms
+audio analysis remain unchanged. No audio decoding or cache purge is needed.
+
+### Verification
+Play a cached track without touching it for 20–30 seconds. The green
+amplitude region should look steady while smoothly scrolling; then
+seek rapidly in both directions and check that fallback and the new
+bitmap agree visually. Repeat on pause. Test Play/Pause and speed to
+ensure that there is no return of main-thread lag.
+
 ### Green played-section shimmer — overlapping-alpha fix
 
 The first flicker fix kept peaks visible during fast scrubs and removed
