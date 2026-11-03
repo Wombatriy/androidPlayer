@@ -40,6 +40,14 @@ class PlaybackQueueTest {
         assertFalse(q.hasNext)
     }
 
+    @Test fun renamingOneReferencePreservesCurrentQueuePosition() {
+        val q = makeQueue()
+        q.replaceReference("three", "three-renamed")
+        assertEquals(1, q.position)
+        assertEquals("two", q.current)
+        assertEquals("three-renamed", q.next())
+    }
+
     @Test fun selectingDoesNotMutateOriginalList() {
         val original = mutableListOf("one", "two")
         val q = PlaybackQueue<String>()

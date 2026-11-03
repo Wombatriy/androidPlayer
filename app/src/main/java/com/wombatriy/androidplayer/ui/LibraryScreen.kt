@@ -29,7 +29,8 @@ class LibraryScreen(
     onChooseFolder: () -> Unit,
     onRescan: () -> Unit,
     onBatchToggle: () -> Unit,
-    private val onTrackSelected: (Track) -> Unit
+    private val onTrackSelected: (Track) -> Unit,
+    private val onTrackLongPressed: (Track) -> Unit
 ) : LinearLayout(context) {
     private val adapter = TrackAdapter(context)
     private val list = ListView(context).apply {
@@ -38,6 +39,10 @@ class LibraryScreen(
         isFastScrollEnabled = true
         setOnItemClickListener { _, _, position, _ ->
             onTrackSelected(this@LibraryScreen.adapter.getItem(position))
+        }
+        setOnItemLongClickListener { _, _, position, _ ->
+            onTrackLongPressed(this@LibraryScreen.adapter.getItem(position))
+            true
         }
     }
     private val choose = compactButton("Choose folder", onChooseFolder)
@@ -106,7 +111,7 @@ class LibraryScreen(
         batch.isEnabled = !loading && adapter.count > 0
         info.text = if (loading) "Reading music folder…" else {
             if (adapter.count == 0) "No audio files found. Choose a folder to begin."
-            else "${adapter.count} tracks • tap to play"
+            else "${adapter.count} tracks · tap to play · hold to rename"
         }
     }
 
@@ -216,7 +221,7 @@ class LibraryScreen(
                     BpmSource.DETECTED -> "D"
                     BpmSource.MANUAL -> "M"
                 }
-                holder.bpm.text = "$prefix ${BpmFormatting.bpm(record.bpm)} BPM"
+                holder.bpm.text = "$prefix ${BpmFormatting.bpm(record.bpm)}"
                 holder.bpm.setTextColor(when (record.source) {
                     BpmSource.FILENAME -> Color.rgb(12, 128, 105)
                     BpmSource.DETECTED -> Color.rgb(34, 92, 168)

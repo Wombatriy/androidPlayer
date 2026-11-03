@@ -26,6 +26,16 @@ class PlaybackQueue<T> {
         }
     }
 
+    /** Replace a renamed reference without resetting playback position. */
+    fun replaceReference(before: T, after: T) {
+        val index = items.indexOf(before)
+        if (index >= 0) {
+            val copy = items.toMutableList()
+            copy[index] = after
+            items = copy
+        }
+    }
+
     fun previous(): T? {
         if (!hasPrevious) return null
         return items[--position]

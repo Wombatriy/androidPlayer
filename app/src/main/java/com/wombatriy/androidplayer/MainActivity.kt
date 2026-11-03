@@ -19,6 +19,7 @@ import com.wombatriy.androidplayer.library.LibraryRepository
 import com.wombatriy.androidplayer.player.PlaybackController
 import com.wombatriy.androidplayer.ui.LibraryScreen
 import com.wombatriy.androidplayer.ui.PlayerScreen
+import com.wombatriy.androidplayer.ui.RenameFlow
 import kotlin.math.roundToInt
 
 /**
@@ -33,6 +34,15 @@ class MainActivity : Activity() {
     private lateinit var pages: List<View>
     private val prefs by lazy { getSharedPreferences("library", MODE_PRIVATE) }
     private val libraryRepository by lazy { LibraryRepository(this) }
+    private val renameFlow by lazy {
+        RenameFlow(this) { previous, result ->
+            playback.onLibraryTrackRenamed(previous, result.replacement)
+            libraryScreen.submitTracks(result.tracks)
+            batchAnalyzer.refreshSources(result.tracks)
+            loadedFromCache = result.cacheSaved
+            updateStatus()
+        }
+    }
     private val bpmCoordinator: BpmCoordinator by lazy {
         BpmCoordinator(this, ::onBpmChanged)
     }
@@ -106,6 +116,12 @@ class MainActivity : Activity() {
                 isAllCaps = false
                 setOnClickListener { showTab(index) }
             }, LinearLayout.LayoutParams(0, dp(52), 1f))
+            if (index < 3) {
+                // Vertical divider between each pair of adjacent tabs.
+                nav.addView(View(this).apply {
+                    setBackgroundColor(Color.rgb(18, 21, 25))
+                }, LinearLayout.LayoutParams(dp(2), dp(52)))
+            }
         }
         root.addView(nav)
         // Two narrow horizontal rules separated by a light gap, as in the mock-up.
@@ -122,7 +138,8 @@ class MainActivity : Activity() {
             onChooseFolder = ::chooseFolder,
             onRescan = ::rescanSelectedFolder,
             onBatchToggle = ::toggleBatchAnalysis,
-            onTrackSelected = ::playTrack
+            onTrackSelected = ::playTrack,
+            onTrackLongPressed = ::previewRename
         )
         pages = listOf(
             playerScreen,
@@ -193,6 +210,10 @@ class MainActivity : Activity() {
     }
 
     private fun chooseFolder() {
+        if (renameFlow.busy) {
+            Toast.makeText(this, "Finish renaming before switching folders", Toast.LENGTH_SHORT).show()
+            return
+        }
         startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or
                 Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
@@ -229,17 +250,38 @@ class MainActivity : Activity() {
     }
 
     private fun rescanSelectedFolder() {
+        if (renameFlow.busy) {
+            Toast.makeText(this, "Finish renaming before rescanning", Toast.LENGTH_SHORT).show()
+            return
+        }
         prefs.getString(KEY_TREE_URI, null)?.let {
             loadLibrary(Uri.parse(it), forceRefresh = true)
         }
     }
 
     private fun toggleBatchAnalysis() {
+        if (renameFlow.busy) return
         if (batchAnalyzer.state.running) {
             batchAnalyzer.cancel()
         } else {
             batchAnalyzer.start(libraryScreen.tracksSnapshot())
         }
+    }
+
+    private fun previewRename(track: Track) {
+        if (renameFlow.busy || loadingFolder || batchAnalyzer.state.running) {
+            Toast.makeText(this, "Finish scanning or BPM analysis first",
+                Toast.LENGTH_SHORT).show()
+            return
+        }
+        // Avoid changing the URI of a file still held by ExoPlayer.
+        if (playback.currentTrack?.uri == track.uri) {
+            Toast.makeText(this, "Choose another track before renaming the loaded one",
+                Toast.LENGTH_LONG).show()
+            return
+        }
+        val folder = prefs.getString(KEY_TREE_URI, null)?.let(Uri::parse) ?: return
+        renameFlow.start(track, folder, libraryScreen.tracksSnapshot())
     }
 
     private fun loadLibrary(treeUri: Uri, forceRefresh: Boolean) {
@@ -306,6 +348,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        renameFlow.close()
         batchAnalyzer.close()
         bpmCoordinator.close()
         playback.release()

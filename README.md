@@ -253,3 +253,57 @@ background processing is a separate MediaSessionService/work scheduling
 consideration for a future step.
 
 GitHub Actions remains manual-only and was not automatically dispatched.
+
+## Iteration 05 — SAF rename, Library labels and navigation plan
+
+- **Fixed F 312:** the old filename BPM parser accepted only 30–300 BPM,
+  so a file named `312 - Artist - Title.flac` silently lost its filename
+  badge. The accepted range is now **20–800 BPM**, consistent with manual BPM.
+- Library's right column now displays just `F 312`, `D 128.5` or `M 140`
+  in source-specific colors; the redundant `BPM` suffix is removed.
+- The four main tab buttons have a thin black divider **between** each pair,
+  in addition to the existing double horizontal line beneath the tab bar.
+
+### Rename one audio file
+
+**Long-press a track in Library**. If its active BPM is known, the app shows
+the original name, the suggested replacement and the BPM source. For example:
+
+`Artist - Title.flac` → `128 - Artist - Title.flac`
+
+Existing BPM prefixes are replaced instead of duplicated; the original file
+extension is preserved. Fractional BPM is rounded to the nearest whole number
+for the filename. The app cannot manufacture missing artist information: a
+file named `Title.mp3` becomes `128 - Title.mp3`.
+
+The user must explicitly confirm the rename. Provider-side work is done on a
+worker thread. The app checks persisted **write** access, the provider's rename
+support, and same-folder filename conflicts (case-insensitively) before showing
+the preview and again just before performing the operation. Audio is **not
+copied, deleted or overwritten** by the app; however, arbitrary third-party
+SAF providers control their own rename semantics, so concurrent external
+file changes and provider-specific behavior must be tested on device.
+
+Renaming the currently loaded track is deliberately blocked until playback
+is moved into a MediaSessionService. Renaming is also blocked during a library
+scan or BPM batch.
+
+SAF may return a different document URI after renaming. The app moves saved
+manual/detected BPM metadata to that URI, replaces the reference in its
+playback queue and persists the updated Library snapshot. A failure to update
+metadata or cache is reported explicitly.
+
+**One-time upgrade note:** library cache format changes from v1 to v2 to
+store the source file's parent document URI. On the first app launch after
+upgrade, the music directory is scanned again. Subsequent launches use the
+cached snapshot as before.
+
+### Android Back behavior planned for step 09
+
+Treat Library as one virtual **All Tracks** playlist. When the user later starts
+playback from a custom playlist, the Player's **Back** navigates to Queue;
+when started from Library, Back navigates to Library. Back from Library should
+minimize the app, with audio continuing in a MediaSessionService. This is a
+roadmap requirement only; the Activity still owns ExoPlayer in step 05.
+
+No GitHub Actions jobs have been started automatically for this change.

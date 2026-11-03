@@ -120,6 +120,11 @@ class PlaybackController(context: Context, private val listener: Listener) {
         listener.onPlaybackControlsChanged()
     }
 
+    /** Keep a queued, not-current file playable if its SAF URI changes on rename. */
+    fun onLibraryTrackRenamed(previous: Track, replacement: Track) {
+        queue.replaceReference(previous, replacement)
+    }
+
     fun next() {
         queue.next()?.let(::playTrack)
     }

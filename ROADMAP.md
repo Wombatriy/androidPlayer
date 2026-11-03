@@ -78,12 +78,25 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [ ] Future: optional auto-enqueue newly added tracks on Rescan and playlist additions (user opt-in)
 - [ ] Future: stronger audio onset model when detection confidence is low
 
-## 05 — Safe rename
-- [ ] Preview `BPM - Artist - Track.ext`
-- [ ] Explicit confirmation, SAF rename, collision handling and error reporting
+## 05 — Safe rename and Library polish (PR #8)
+- [x] Accept filename BPM up to 800 (fixes `F 312` disappearing due to the old 30–300 filter)
+- [x] Use compact Library badges `F 312`, `D 128.5`, `M 140` without repeating BPM
+- [x] Add three vertical dark dividers between the four top-level tab buttons
+- [x] Long-press a Library track to preview a new `BPM - existing-name.ext` using its active BPM
+- [x] Replace an existing BPM prefix rather than duplicating it; preserve extension and do not invent artist metadata
+- [x] Require confirmation, persist SAF write grant and the provider's supports-rename flag
+- [x] Check same-folder filename collisions before preview and again before rename
+- [x] Rename via SAF on a worker; never copy media files or ask for blanket storage access
+- [x] Migrate saved BPM metadata when SAF changes the file URI; synchronize cached Library and playback queue
+- [x] Record parent document URI in a version 2 Library cache for fast sibling checks; first launch after upgrade performs one fresh scan
+- [x] Refuse to rename the currently loaded track or while a batch scan/BPM operation is active
+- [x] Add JVM tests for above-300 BPM parsing, naming, collisions and queue-reference updates
+- [ ] Verify Android SAF rename on real storage providers and check cache/BPM across a full app restart
+- [ ] Later: bulk rename preview/confirm when a reliable batch workflow is needed
 
 ## 06 — Playlists (ordered reference lists, not copies of audio files)
-- [ ] Store each playlist as a small locally cached ordered list of SAF content URIs
+- [ ] Treat Library as a virtual "All Tracks" playlist; share playback-queue interfaces with user playlists
+- [ ] Store each user playlist as a small locally cached ordered list of SAF content URIs
 - [ ] Preserve insertion and explicitly chosen order; **never alphabetically sort playlists**
 - [ ] Create/rename/delete lists and add/remove tracks from the Library's context menu
 - [ ] Restore playlists after relaunch and gracefully handle moved, deleted or inaccessible files
@@ -101,6 +114,9 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 
 ## 09 — Background playback, lock-screen controls and Android Back
 - [ ] Extract ExoPlayer from Activity into a persistent foreground MediaSessionService
+- [ ] Android Back on Player returns to **Library** when playing from the virtual All Tracks list, or to **Queue** when started from a user playlist
+- [ ] Android Back on Library minimizes the app instead of terminating playback
+- [ ] Source-aware navigation history should not alter the playback queue or reset its position
 - [ ] Android Back must close/navigate the UI **without stopping current playback**
 - [ ] Support Play/Pause/Previous/Next from lock screen and system media notification
 - [ ] Keep playback running with screen off, Activity destroyed and app sent to background

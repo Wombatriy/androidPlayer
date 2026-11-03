@@ -56,7 +56,7 @@ object MusicFolder {
                 } else if (file.isFile) {
                     val name = file.name ?: continue
                     if (name.substringAfterLast('.', "").lowercase() in extensions) {
-                        result.add(Track(file.uri, name))
+                        result.add(Track(file.uri, name, folder.uri))
                     }
                 }
                 report()

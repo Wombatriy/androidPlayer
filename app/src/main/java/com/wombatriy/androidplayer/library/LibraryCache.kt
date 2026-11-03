@@ -25,7 +25,12 @@ class LibraryCache(context: Context) {
             ArrayList<Track>(array.length()).also { list ->
                 for (i in 0 until array.length()) {
                     val item = array.getJSONObject(i)
-                    list.add(Track(Uri.parse(item.getString("uri")), item.getString("name")))
+                    val parent = item.optString("parentUri").takeIf { it.isNotBlank() }
+                    list.add(Track(
+                        Uri.parse(item.getString("uri")),
+                        item.getString("name"),
+                        parent?.let(Uri::parse)
+                    ))
                 }
             }
         }
@@ -36,7 +41,11 @@ class LibraryCache(context: Context) {
     fun write(folder: Uri, tracks: List<Track>) {
         val items = JSONArray()
         for (track in tracks) {
-            items.put(JSONObject().put("uri", track.uri.toString()).put("name", track.name))
+            items.put(JSONObject()
+                .put("uri", track.uri.toString())
+                .put("name", track.name)
+                .put("parentUri", track.parentUri?.toString() ?: "")
+            )
         }
         val bytes = JSONObject()
             .put("version", VERSION)
@@ -56,5 +65,5 @@ class LibraryCache(context: Context) {
         }
     }
 
-    companion object { private const val VERSION = 1 }
+    companion object { private const val VERSION = 2 }
 }

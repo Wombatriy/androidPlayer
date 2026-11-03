@@ -83,6 +83,25 @@ class BpmRepository(context: Context) {
         return editor.commit()
     }
 
+    /**
+     * SAF providers may issue a new URI after rename. Move all stored BPM data
+     * with it, including legacy records, without changing manual priority.
+     * Called only on SafeRenameService's worker.
+     */
+    fun migrate(before: Track, after: Track): Boolean {
+        val oldKey = key(before)
+        val newKey = key(after)
+        if (oldKey == newKey) return true
+        val editor = prefs.edit()
+        for (suffix in listOf("", ".detected", ".manual")) {
+            prefs.getString(oldKey + suffix, null)?.let { value ->
+                editor.putString(newKey + suffix, value)
+                editor.remove(oldKey + suffix)
+            }
+        }
+        return editor.commit()
+    }
+
     fun clearManual(track: Track) {
         val base = key(track)
         val editor = prefs.edit().remove(base + ".manual")
