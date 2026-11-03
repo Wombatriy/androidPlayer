@@ -748,6 +748,8 @@ to the existing playback controller through a protected same-process Binder
 and detach on Activity destruction; leaving the UI does **not** release
 or pause the audio engine.
 
+When playback resumes from a lock-screen/headset control, the A–B ticker wakes immediately rather than waiting for the relaxed 1-second background heartbeat.
+
 When music plays, Media3's standard media notification and system player
 provide Play/Pause, Next and Previous. It uses the same queue operations
 as the Player tab, so a user playlist's manually chosen order stays

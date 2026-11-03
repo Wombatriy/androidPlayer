@@ -180,6 +180,7 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 ## 09 — MediaSessionService, background audio, lock-screen controls and Back (PR #12)
 - [x] Keep a **single** ExoPlayer/PlaybackController in MusicPlaybackService rather than MainActivity
 - [x] Retain playback queue, A–B loop, speed and end mode when Activity is recreated/closed; UI registers and unregisters a listener on service connect/destroy
+- [x] Wake A–B ticker immediately on remote Play/Pause and buffering changes, avoiding a stale 1Hz background heartbeat at resume
 - [x] Media3 MediaSessionService manages the foreground media notification, system transport controls and task removal while actively playing
 - [x] Advertise title metadata; notification opens the Player tab through PendingIntent
 - [x] Forward system/Bluetooth Play/Pause/Next/Previous to the same ExoPlayer and PlaybackQueue as the app UI
