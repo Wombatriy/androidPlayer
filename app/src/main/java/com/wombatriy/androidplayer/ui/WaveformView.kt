@@ -121,24 +121,43 @@ class WaveformView(
 
         val levels = waveform?.levels
         if (levels != null && levels.isNotEmpty()) {
-            val barCount = max(1, (span / context.dp(3).coerceAtLeast(2)).toInt())
+            /*
+             * The original rendering recalculated "one peak per screen bar"
+             * as the viewport moved. Its bin boundaries jumped every few
+             * pixels, making the SAME audio look louder/quieter periodically.
+             *
+             * Instead, group PCM peaks by ABSOLUTE track time and translate
+             * their X coordinates as the viewport moves. Group boundaries,
+             * peak heights and stroke width are fixed for a given zoom.
+             */
+            val groupSize = WaveformMath.drawGroupSize(window, span.toInt())
+            val samplesPerStroke = WaveformMath.BIN_DURATION_MS * groupSize
+            val strokeWidth = max(
+                1f, (samplesPerStroke.toFloat() / window.lengthMs * span) * 0.82f
+            )
             paint.style = Paint.Style.STROKE
             paint.strokeCap = Paint.Cap.ROUND
-            paint.strokeWidth = max(1f, span / barCount * 0.75f)
-            for (bar in 0 until barCount) {
-                val startMs = window.startMs + bar.toLong() * window.lengthMs / barCount
-                val endMs = window.startMs + (bar + 1L) * window.lengthMs / barCount
-                val first = (startMs / WaveformMath.BIN_DURATION_MS)
-                    .toInt().coerceIn(0, levels.lastIndex)
-                val last = (endMs / WaveformMath.BIN_DURATION_MS)
-                    .toInt().coerceIn(first, levels.lastIndex)
+            paint.strokeWidth = strokeWidth
+            val saved = canvas.save()
+            canvas.clipRect(l, 0f, r, height.toFloat())
+            for (first in WaveformMath.visibleGroupStarts(
+                window, levels.size, groupSize
+            )) {
+                val last = (first + groupSize - 1).coerceAtMost(levels.lastIndex)
                 var peak = 0
-                for (index in first..last) peak = maxOf(peak, levels[index].toInt() and 255)
-                val x = l + (bar + 0.5f) * span / barCount
+                for (index in first..last) {
+                    peak = maxOf(peak, levels[index].toInt() and 255)
+                }
+                // Always the SAME point for a given group of audio bins.
+                val centerTimeMs = (first.toLong() + (last - first + 1) / 2.0) *
+                    WaveformMath.BIN_DURATION_MS
+                val x = l + ((centerTimeMs - window.startMs) /
+                    window.lengthMs * span).toFloat()
                 val half = max(context.dp(1).toFloat(), heightScale * peak / 255f)
-                paint.color = if (endMs <= displayedPosition()) teal else muted
+                paint.color = if (centerTimeMs <= displayedPosition()) teal else muted
                 canvas.drawLine(x, middle - half, x, middle + half, paint)
             }
+            canvas.restoreToCount(saved)
         }
 
         fun marker(time: Long?, label: String, color: Int) {
