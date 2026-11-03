@@ -109,6 +109,35 @@ class WaveformMathTest {
         ).none())
     }
 
+    @Test fun uncoveredTimelineMustNeverBeTreatedAsReadyTile() {
+        val prepared = WaveformMath.Window(80_000L, 120_000L)
+        assertTrue(WaveformMath.tileCovers(
+            WaveformMath.Window(90_000L, 110_000L), prepared
+        ))
+        // Fast dragging moves beyond either edge before the worker completes.
+        assertFalse(WaveformMath.tileCovers(
+            WaveformMath.Window(119_000L, 139_000L), prepared
+        ))
+        assertFalse(WaveformMath.tileCovers(
+            WaveformMath.Window(61_000L, 81_000L), prepared
+        ))
+        assertFalse(WaveformMath.tileCovers(
+            WaveformMath.Window(0L, 0L), prepared
+        ))
+    }
+
+    @Test fun movingViewportKeepsExistingTileUntilFullyOutOfRange() {
+        val tile = WaveformMath.Window(80_000L, 120_000L)
+        for (at in 90_000L..110_000L step 250L) {
+            assertTrue(WaveformMath.tileCovers(
+                WaveformMath.Window(at, at + 10_000L), tile
+            ))
+        }
+        assertFalse(WaveformMath.tileCovers(
+            WaveformMath.Window(110_001L, 120_001L), tile
+        ))
+    }
+
     @Test fun backgroundTileStaysBoundedEvenAtExtremeZoom() {
         val normal = WaveformMath.Window(90_000L, 110_000L)
         assertEquals(WaveformMath.Window(80_000L, 120_000L),
