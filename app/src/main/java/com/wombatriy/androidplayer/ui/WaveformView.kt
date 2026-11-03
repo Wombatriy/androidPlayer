@@ -4,11 +4,13 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import com.wombatriy.androidplayer.waveform.WaveformAnimationPolicy
+import com.wombatriy.androidplayer.waveform.WaveformFrameClock
 import com.wombatriy.androidplayer.waveform.WaveformData
 import com.wombatriy.androidplayer.waveform.WaveformMath
 import kotlin.math.abs
@@ -23,12 +25,14 @@ class WaveformView(
     context: Context,
     private val onSeek: (Long) -> Unit,
     private val playbackPosition: () -> Long,
-    private val playbackRunning: () -> Boolean
+    private val playbackRunning: () -> Boolean,
+    private val playbackSpeed: () -> Float
 ) : View(context) {
     companion object {
         /** Change this to 5 for a total 10-second window, or 15 for 30 seconds. */
         const val WINDOW_RADIUS_SECONDS = 10L
         private const val SEEK_THROTTLE_MS = 80L
+        private const val PRELOAD_AROUND_WINDOW_MS = 10_000L
     }
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -56,6 +60,19 @@ class WaveformView(
     private var externalScrubbing = false
     private var frameScheduled = false
     private var stopped = false
+    private val smoothClock = WaveformFrameClock()
+    private val peakPath = Path()
+    private var cachedWaveform: WaveformData? = null
+    private var cachedStartMs = 0L
+    private var cachedEndMs = 0L
+    private var cachedWindowLength = 0L
+    private var cachedWidth = -1
+    private var cachedHeight = -1
+    private var cachedGroupSize = 1
+    private var firstLabelSecond = -1L
+    private var lastLabelSecond = -1L
+    private var firstLabel = "0:00"
+    private var lastLabel = "0:00"
 
     /**
      * PlayerScreen's normal ticker runs every ~120 ms. Use ExoPlayer's
@@ -66,7 +83,9 @@ class WaveformView(
         override fun run() {
             frameScheduled = false
             if (!canAnimate()) return
-            val current = playbackPosition().coerceAtLeast(0L)
+            // Move continuously by a monotonic clock, not by the potentially
+            // quantized media position returned by a particular device.
+            val current = smoothClock.positionAt(SystemClock.elapsedRealtimeNanos())
             if (positionMs != current) {
                 positionMs = current
                 postInvalidateOnAnimation()
@@ -96,10 +115,19 @@ class WaveformView(
         }
     }
 
-    /** React to playing/paused, buffering and tab visibility changes. */
+    /** Synchronize on state changes; do not reset the smooth clock each frame. */
     fun refreshAnimationState() {
-        if (canAnimate()) {
-            val current = playbackPosition().coerceAtLeast(0L)
+        val running = playbackRunning()
+        val animate = canAnimate()
+        val now = SystemClock.elapsedRealtimeNanos()
+        if (animate) {
+            // The first frame after a pause, seek or hidden tab needs a fresh
+            // anchor. The ordinary 120ms updates below only correct drift.
+            smoothClock.sync(
+                playbackPosition(), now, playbackSpeed(), running, durationMs,
+                force = !frameScheduled
+            )
+            val current = smoothClock.positionAt(now)
             if (current != positionMs) {
                 positionMs = current
                 invalidate()
@@ -107,6 +135,15 @@ class WaveformView(
             scheduleFrame()
         } else {
             stopFrames()
+            // While paused, pin the picture to the real media time.
+            if (!tracking && !externalScrubbing) {
+                val current = playbackPosition().coerceAtLeast(0L)
+                smoothClock.sync(current, now, playbackSpeed(), false, durationMs, force = true)
+                if (current != positionMs) {
+                    positionMs = current
+                    invalidate()
+                }
+            }
         }
     }
 
@@ -147,29 +184,37 @@ class WaveformView(
 
     fun setWaveform(value: WaveformData?) {
         waveform = value
+        // A changed track invalidates its cached geometry, not every frame.
+        cachedWaveform = null
+        peakPath.reset()
         if (durationMs <= 0L && value != null) durationMs = value.durationMs
         invalidate()
         refreshAnimationState()
     }
 
     fun setPlayback(position: Long, duration: Long) {
-        val oldPosition = positionMs
         val oldDuration = durationMs
+        val oldPosition = positionMs
         durationMs = duration.takeIf { it > 0L } ?: waveform?.durationMs ?: 0L
-        // Ignore the coarse (~120 ms) ticker position during normal playback.
-        // A stale ticker value must never snap the smooth animated timeline.
-        if (!tracking) {
-            val playing = playbackRunning()
-            val live = if (playing && !externalScrubbing) playbackPosition() else position
-            positionMs = WaveformAnimationPolicy.choosePosition(
-                tickerMs = position,
-                liveMediaClockMs = live,
-                playing = playing,
-                seekbarScrubbing = externalScrubbing
+        val now = SystemClock.elapsedRealtimeNanos()
+        if (externalScrubbing) {
+            // Position supplied by the user's full-track SeekBar is authoritative.
+            positionMs = position.coerceAtLeast(0L)
+        } else if (!tracking) {
+            val running = playbackRunning()
+            smoothClock.sync(
+                observedMs = if (running) playbackPosition() else position,
+                timeNanos = now,
+                playbackSpeed = playbackSpeed(),
+                isPlaying = running,
+                mediaDurationMs = durationMs
             )
+            positionMs = smoothClock.positionAt(now)
         }
         if (oldPosition != positionMs || oldDuration != durationMs) invalidate()
-        refreshAnimationState()
+        // Keep the vsync loop alive, but don't re-anchor to the raw player
+        // position every 120ms: doing so reintroduces the original jitter.
+        if (canAnimate()) scheduleFrame() else stopFrames()
     }
 
     fun setMarkers(a: Long?, b: Long?) {
@@ -185,6 +230,59 @@ class WaveformView(
     private fun viewport() = WaveformMath.windowAround(
         displayedPosition(), durationMs, WINDOW_RADIUS_SECONDS * 1_000L
     )
+
+    /**
+     * Render peak heights into a cached Path for the visible 20 seconds plus
+     * a 10-second margin. While the song plays, only translate this immutable
+     * geometry. Rebuild a short region about every 8–10 seconds or on seek,
+     * zoom, size or track changes; never regenerate screen bars per frame.
+     */
+    private fun ensurePeakPath(
+        window: WaveformMath.Window, left: Float, right: Float,
+        centerY: Float, amplitude: Float
+    ) {
+        val data = waveform ?: return
+        val widthPx = right - left
+        val groupSize = WaveformMath.drawGroupSize(window, widthPx.toInt())
+        val nearStart = cachedStartMs > 0L &&
+            window.startMs < cachedStartMs + PRELOAD_AROUND_WINDOW_MS / 6L
+        val nearEnd = cachedEndMs < durationMs &&
+            window.endMs > cachedEndMs - PRELOAD_AROUND_WINDOW_MS / 6L
+        val invalid = cachedWaveform !== data || cachedWindowLength != window.lengthMs ||
+            cachedWidth != width || cachedHeight != height ||
+            cachedGroupSize != groupSize || nearStart || nearEnd ||
+            window.startMs < cachedStartMs || window.endMs > cachedEndMs
+        if (!invalid) return
+
+        val newStart = (window.startMs - PRELOAD_AROUND_WINDOW_MS).coerceAtLeast(0L)
+        val newEnd = (window.endMs + PRELOAD_AROUND_WINDOW_MS)
+            .coerceAtMost(durationMs)
+        peakPath.reset()
+        val levels = data.levels
+        val scale = widthPx / window.lengthMs.toFloat()
+        for (first in WaveformMath.visibleGroupStarts(
+            WaveformMath.Window(newStart, newEnd), levels.size, groupSize
+        )) {
+            val last = (first + groupSize - 1).coerceAtMost(levels.lastIndex)
+            var peak = 0
+            for (index in first..last) {
+                peak = maxOf(peak, levels[index].toInt() and 255)
+            }
+            val centerTimeMs = (first.toLong() + (last - first + 1) / 2.0) *
+                WaveformMath.BIN_DURATION_MS
+            val x = ((centerTimeMs - newStart) * scale).toFloat()
+            val halfHeight = max(context.dp(1).toFloat(), amplitude * peak / 255f)
+            peakPath.moveTo(x, centerY - halfHeight)
+            peakPath.lineTo(x, centerY + halfHeight)
+        }
+        cachedWaveform = data
+        cachedStartMs = newStart
+        cachedEndMs = newEnd
+        cachedWindowLength = window.lengthMs
+        cachedWidth = width
+        cachedHeight = height
+        cachedGroupSize = groupSize
+    }
     private fun xFor(ms: Long, window: WaveformMath.Window): Float =
         left() + WaveformMath.fractionAtTime(ms, window) * (right() - left())
     private fun timeAt(x: Float, window: WaveformMath.Window): Long =
@@ -218,45 +316,33 @@ class WaveformView(
             }
         }
 
-        val levels = waveform?.levels
-        if (levels != null && levels.isNotEmpty()) {
-            /*
-             * The original rendering recalculated "one peak per screen bar"
-             * as the viewport moved. Its bin boundaries jumped every few
-             * pixels, making the SAME audio look louder/quieter periodically.
-             *
-             * Instead, group PCM peaks by ABSOLUTE track time and translate
-             * their X coordinates as the viewport moves. Group boundaries,
-             * peak heights and stroke width are fixed for a given zoom.
-             */
-            val groupSize = WaveformMath.drawGroupSize(window, span.toInt())
-            val samplesPerStroke = WaveformMath.BIN_DURATION_MS * groupSize
-            val strokeWidth = max(
-                1f, (samplesPerStroke.toFloat() / window.lengthMs * span) * 0.82f
-            )
+        if (waveform != null) {
+            ensurePeakPath(window, l, r, middle, heightScale)
+            val pixelsPerMs = span / window.lengthMs
+            val translationX = l - (window.startMs - cachedStartMs) * pixelsPerMs
+            val playhead = xFor(displayedPosition(), window)
             paint.style = Paint.Style.STROKE
             paint.strokeCap = Paint.Cap.ROUND
-            paint.strokeWidth = strokeWidth
-            val saved = canvas.save()
+            paint.strokeWidth = max(1f,
+                WaveformMath.BIN_DURATION_MS * cachedGroupSize * pixelsPerMs * 0.82f)
+
+            // Two cached-Path draws, instead of hundreds of fresh drawLine
+            // and peak-aggregation operations every display frame.
+            canvas.save()
             canvas.clipRect(l, 0f, r, height.toFloat())
-            for (first in WaveformMath.visibleGroupStarts(
-                window, levels.size, groupSize
-            )) {
-                val last = (first + groupSize - 1).coerceAtMost(levels.lastIndex)
-                var peak = 0
-                for (index in first..last) {
-                    peak = maxOf(peak, levels[index].toInt() and 255)
-                }
-                // Always the SAME point for a given group of audio bins.
-                val centerTimeMs = (first.toLong() + (last - first + 1) / 2.0) *
-                    WaveformMath.BIN_DURATION_MS
-                val x = l + ((centerTimeMs - window.startMs) /
-                    window.lengthMs * span).toFloat()
-                val half = max(context.dp(1).toFloat(), heightScale * peak / 255f)
-                paint.color = if (centerTimeMs <= displayedPosition()) teal else muted
-                canvas.drawLine(x, middle - half, x, middle + half, paint)
+            canvas.translate(translationX, 0f)
+            paint.color = muted
+            canvas.drawPath(peakPath, paint)
+            canvas.restore()
+
+            if (playhead > l) {
+                canvas.save()
+                canvas.clipRect(l, 0f, playhead.coerceAtMost(r), height.toFloat())
+                canvas.translate(translationX, 0f)
+                paint.color = teal
+                canvas.drawPath(peakPath, paint)
+                canvas.restore()
             }
-            canvas.restoreToCount(saved)
         }
 
         fun marker(time: Long?, label: String, color: Int) {
@@ -285,13 +371,21 @@ class WaveformView(
         paint.style = Paint.Style.FILL
         paint.color = Color.rgb(91, 105, 109)
         paint.textSize = labelSize
-        fun timeLabel(ms: Long): String = String.format(
-            java.util.Locale.US, "%d:%02d", ms / 60_000L, ms / 1_000L % 60L
-        )
-        val endLabel = timeLabel(window.endMs)
-        canvas.drawText(timeLabel(window.startMs), l,
-            height - context.dp(4).toFloat(), paint)
-        canvas.drawText(endLabel, r - paint.measureText(endLabel),
+        // Format text only when the displayed whole second changes.
+        // String.format on every vsync used to allocate heavily and cause
+        // intermittent GC pauses while the waveform was animating.
+        val startSecond = window.startMs / 1_000L
+        val endSecond = window.endMs / 1_000L
+        if (startSecond != firstLabelSecond) {
+            firstLabelSecond = startSecond
+            firstLabel = "${startSecond / 60}:${(startSecond % 60).toString().padStart(2, '0')}"
+        }
+        if (endSecond != lastLabelSecond) {
+            lastLabelSecond = endSecond
+            lastLabel = "${endSecond / 60}:${(endSecond % 60).toString().padStart(2, '0')}"
+        }
+        canvas.drawText(firstLabel, l, height - context.dp(4).toFloat(), paint)
+        canvas.drawText(lastLabel, r - paint.measureText(lastLabel),
             height - context.dp(4).toFloat(), paint)
     }
 
