@@ -99,8 +99,21 @@ object WaveformMath {
     }
 
     /**
-     * A moving waveform must reuse its already-rendered Path for many
-     * consecutive frames. Rebuild only when the viewport approaches the
+     * Bound the pre-rendered bitmap to at most twice the visible width.
+     * The 20-second default stores a 40-second tile; tight zoom stays safe.
+     */
+    fun bufferedTileWindow(viewport: Window, durationMs: Long): Window {
+        if (viewport.lengthMs <= 0L || durationMs <= 0L) return Window(0L, 0L)
+        val pad = minOf(10_000L, viewport.lengthMs / 2L)
+        return Window(
+            (viewport.startMs - pad).coerceAtLeast(0L),
+            (viewport.endMs + pad).coerceAtMost(durationMs)
+        )
+    }
+
+    /**
+     * A moving waveform must reuse its already-rasterized bitmap for many
+     * consecutive frames. Request a fresh tile only near the
      * buffered edges or its source/scale/dimensions changed.
      */
     fun peakPathNeedsRebuild(

@@ -109,6 +109,24 @@ class WaveformMathTest {
         ).none())
     }
 
+    @Test fun backgroundTileStaysBoundedEvenAtExtremeZoom() {
+        val normal = WaveformMath.Window(90_000L, 110_000L)
+        assertEquals(WaveformMath.Window(80_000L, 120_000L),
+            WaveformMath.bufferedTileWindow(normal, 240_000L))
+        val tiny = WaveformMath.Window(90_000L, 92_000L)
+        val buffered = WaveformMath.bufferedTileWindow(tiny, 240_000L)
+        assertEquals(WaveformMath.Window(89_000L, 93_000L), buffered)
+        assertTrue(buffered.lengthMs <= tiny.lengthMs * 2)
+        assertEquals(WaveformMath.Window(0L, 30_000L),
+            WaveformMath.bufferedTileWindow(
+                WaveformMath.Window(0L, 20_000L), 240_000L
+            ))
+        assertEquals(WaveformMath.Window(0L, 0L),
+            WaveformMath.bufferedTileWindow(
+                WaveformMath.Window(0L, 0L), 0L
+            ))
+    }
+
     @Test fun peakPathRemainsCachedThroughHundredsOfSmoothFrames() {
         val cache = WaveformMath.Window(80_000L, 120_000L)
         // A 20-second viewport drifts across the same prepared 40-second Path.

@@ -4,7 +4,8 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.os.SystemClock
 import android.util.Log
 import android.view.MotionEvent
@@ -14,6 +15,7 @@ import com.wombatriy.androidplayer.waveform.WaveformAnimationPolicy
 import com.wombatriy.androidplayer.waveform.WaveformFrameClock
 import com.wombatriy.androidplayer.waveform.WaveformData
 import com.wombatriy.androidplayer.waveform.WaveformMath
+import com.wombatriy.androidplayer.waveform.WaveformTileRenderer
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -33,6 +35,9 @@ class WaveformView(
         /** Change this to 5 for a total 10-second window, or 15 for 30 seconds. */
         const val WINDOW_RADIUS_SECONDS = 10L
         private const val SEEK_THROTTLE_MS = 80L
+        // 30 fps is smooth enough for a 20-second viewport, and lets the
+        // UI thread prioritize Play/Pause, speed and transport input.
+        private const val FRAME_INTERVAL_MS = 32L
         private const val PRELOAD_AROUND_WINDOW_MS = 10_000L
     }
 
@@ -64,14 +69,19 @@ class WaveformView(
     private var lastFrameNanos = 0L
     private var lastWarningNanos = 0L
     private val smoothClock = WaveformFrameClock()
-    private val peakPath = Path()
-    private var cachedWaveform: WaveformData? = null
-    private var cachedStartMs = 0L
-    private var cachedEndMs = 0L
-    private var cachedWindowLength = 0L
-    private var cachedWidth = -1
-    private var cachedHeight = -1
-    private var cachedGroupSize = 1
+    private var tile: WaveformTileRenderer.Tile? = null
+    private val tiles = WaveformTileRenderer { ready ->
+        if (!stopped && waveform === ready.source) {
+            tile = ready
+            invalidate()
+        }
+    }
+    private val mutedBitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+        colorFilter = PorterDuffColorFilter(muted, PorterDuff.Mode.SRC_IN)
+    }
+    private val playedBitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+        colorFilter = PorterDuffColorFilter(teal, PorterDuff.Mode.SRC_IN)
+    }
     private var firstLabelSecond = -1L
     private var lastLabelSecond = -1L
     private var firstLabel = "0:00"
@@ -113,7 +123,7 @@ class WaveformView(
     private fun scheduleFrame() {
         if (!frameScheduled && canAnimate()) {
             frameScheduled = true
-            postOnAnimation(animationFrame)
+            postOnAnimationDelayed(animationFrame, FRAME_INTERVAL_MS)
         }
     }
 
@@ -177,6 +187,8 @@ class WaveformView(
     fun close() {
         stopped = true
         stopFrames()
+        tiles.close()
+        tile = null
     }
 
     override fun onAttachedToWindow() {
@@ -204,9 +216,9 @@ class WaveformView(
 
     fun setWaveform(value: WaveformData?) {
         waveform = value
-        // A changed track invalidates its cached geometry, not every frame.
-        cachedWaveform = null
-        peakPath.reset()
+        // Old tile must never be displayed for a different audio file.
+        tiles.cancel()
+        tile = null
         if (durationMs <= 0L && value != null) durationMs = value.durationMs
         invalidate()
         refreshAnimationState()
@@ -251,60 +263,46 @@ class WaveformView(
         displayedPosition(), durationMs, WINDOW_RADIUS_SECONDS * 1_000L
     )
 
-    /**
-     * Render peak heights into a cached Path for the visible 20 seconds plus
-     * a 10-second margin. While the song plays, only translate this immutable
-     * geometry. Rebuild a short region about every 8–10 seconds or on seek,
-     * zoom, size or track changes; never regenerate screen bars per frame.
-     */
-    private fun ensurePeakPath(
-        window: WaveformMath.Window, left: Float, right: Float,
-        centerY: Float, amplitude: Float
-    ) {
-        val data = waveform ?: return
-        val widthPx = right - left
-        val groupSize = WaveformMath.drawGroupSize(window, widthPx.toInt())
-        val invalid = WaveformMath.peakPathNeedsRebuild(
-            viewport = window,
-            cached = WaveformMath.Window(cachedStartMs, cachedEndMs),
-            trackDurationMs = durationMs,
-            preloadMs = PRELOAD_AROUND_WINDOW_MS,
-            configurationChanged = cachedWaveform !== data ||
-                cachedWindowLength != window.lengthMs ||
-                cachedWidth != width || cachedHeight != height ||
-                cachedGroupSize != groupSize
-        )
-        if (!invalid) return
-
-        val newStart = (window.startMs - PRELOAD_AROUND_WINDOW_MS).coerceAtLeast(0L)
-        val newEnd = (window.endMs + PRELOAD_AROUND_WINDOW_MS)
-            .coerceAtMost(durationMs)
-        peakPath.reset()
-        val levels = data.levels
-        val scale = widthPx / window.lengthMs.toFloat()
-        for (first in WaveformMath.visibleGroupStarts(
-            WaveformMath.Window(newStart, newEnd), levels.size, groupSize
-        )) {
-            val last = (first + groupSize - 1).coerceAtMost(levels.lastIndex)
-            var peak = 0
-            for (index in first..last) {
-                peak = maxOf(peak, levels[index].toInt() and 255)
-            }
-            val centerTimeMs = (first.toLong() + (last - first + 1) / 2.0) *
-                WaveformMath.BIN_DURATION_MS
-            val x = ((centerTimeMs - newStart) * scale).toFloat()
-            val halfHeight = max(context.dp(1).toFloat(), amplitude * peak / 255f)
-            peakPath.moveTo(x, centerY - halfHeight)
-            peakPath.lineTo(x, centerY + halfHeight)
-        }
-        cachedWaveform = data
-        cachedStartMs = newStart
-        cachedEndMs = newEnd
-        cachedWindowLength = window.lengthMs
-        cachedWidth = width
-        cachedHeight = height
-        cachedGroupSize = groupSize
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        tiles.cancel()
+        tile = null
     }
+
+    /**
+     * The only rendering preparation on the main thread is checking a small
+     * cache key. A dedicated worker builds the next tile asynchronously.
+     */
+    private fun requestTileIfNeeded(
+        window: WaveformMath.Window, contentWidth: Int
+    ): WaveformTileRenderer.Tile? {
+        val data = waveform ?: return null
+        if (window.lengthMs <= 0 || contentWidth <= 0 || height <= 0) return null
+        val size = WaveformMath.drawGroupSize(window, contentWidth)
+        val current = tile
+        val compatible = current != null && current.source === data &&
+            current.windowMs == window.lengthMs &&
+            current.viewWidth == contentWidth &&
+            current.viewHeight == height && current.groupSize == size
+        val covered = compatible && current != null &&
+            window.startMs >= current.startMs && window.endMs <= current.endMs
+        val needsPrefetch = if (!covered || current == null) {
+            true
+        } else {
+            WaveformMath.peakPathNeedsRebuild(
+                viewport = window,
+                cached = WaveformMath.Window(current.startMs, current.endMs),
+                trackDurationMs = durationMs,
+                preloadMs = minOf(10_000L, window.lengthMs / 2L),
+                configurationChanged = !compatible
+            )
+        }
+        if (needsPrefetch) {
+            tiles.request(data, window, durationMs, contentWidth, height, size)
+        }
+        return if (covered) current else null
+    }
+
     private fun xFor(ms: Long, window: WaveformMath.Window): Float =
         left() + WaveformMath.fractionAtTime(ms, window) * (right() - left())
     private fun timeAt(x: Float, window: WaveformMath.Window): Long =
@@ -339,31 +337,24 @@ class WaveformView(
             }
         }
 
-        if (waveform != null) {
-            ensurePeakPath(window, l, r, middle, heightScale)
-            val pixelsPerMs = span / window.lengthMs
-            val translationX = l - (window.startMs - cachedStartMs) * pixelsPerMs
+        val prepared = requestTileIfNeeded(window, span.toInt())
+        if (prepared != null) {
+            val translationX = l -
+                ((window.startMs - prepared.startMs).toDouble() *
+                    span / window.lengthMs).toFloat()
             val playhead = xFor(displayedPosition(), window)
-            paint.style = Paint.Style.STROKE
-            paint.strokeCap = Paint.Cap.ROUND
-            paint.strokeWidth = max(1f,
-                WaveformMath.BIN_DURATION_MS * cachedGroupSize * pixelsPerMs * 0.82f)
 
-            // Two cached-Path draws, instead of hundreds of fresh drawLine
-            // and peak-aggregation operations every display frame.
+            // Off-thread rasterization: onDraw() never walks PCM bins or
+            // draws Paths. Two small bitmap draws with a clip are all that
+            // remain in the main-thread hot path.
             canvas.save()
             canvas.clipRect(l, 0f, r, height.toFloat())
-            canvas.translate(translationX, 0f)
-            paint.color = muted
-            canvas.drawPath(peakPath, paint)
+            canvas.drawBitmap(prepared.bitmap, translationX, 0f, mutedBitmapPaint)
             canvas.restore()
-
             if (playhead > l) {
                 canvas.save()
                 canvas.clipRect(l, 0f, playhead.coerceAtMost(r), height.toFloat())
-                canvas.translate(translationX, 0f)
-                paint.color = teal
-                canvas.drawPath(peakPath, paint)
+                canvas.drawBitmap(prepared.bitmap, translationX, 0f, playedBitmapPaint)
                 canvas.restore()
             }
         }
