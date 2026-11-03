@@ -1,6 +1,7 @@
 package com.wombatriy.androidplayer.waveform
 
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 import kotlin.math.sqrt
 
 /** JVM-testable time, viewport and amplitude calculations. */
