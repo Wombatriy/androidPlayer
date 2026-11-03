@@ -70,6 +70,45 @@ class WaveformMathTest {
         assertEquals(255, result[399].toInt() and 255)
     }
 
+    @Test fun peakGroupsStayFixedWhileViewportSlides() {
+        // Same 20s zoom, with the viewport moving by only 25 milliseconds.
+        val before = WaveformMath.Window(100_000L, 120_000L)
+        val after = WaveformMath.Window(100_025L, 120_025L)
+        val groupSize = WaveformMath.drawGroupSize(before, 300)
+        assertEquals(2, groupSize)
+        assertEquals(groupSize, WaveformMath.drawGroupSize(after, 300))
+        val first = WaveformMath.visibleGroupStarts(before, 3_000, groupSize).toList()
+        val shifted = WaveformMath.visibleGroupStarts(after, 3_000, groupSize).toList()
+        // Unchanged groups represent the same absolute audio time and use
+        // the same cached level. The previous screen-column algorithm didn't.
+        assertEquals(first.take(12), shifted.take(12))
+        assertTrue(first.toSet().intersect(shifted.toSet()).size >= first.size - 1)
+        val sampleTime = 105_000L
+        val expectedPixelShift =
+            (WaveformMath.fractionAtTime(sampleTime, after) -
+                WaveformMath.fractionAtTime(sampleTime, before)) * 300f
+        assertEquals(-0.375f, expectedPixelShift, 0.002f)
+    }
+
+    @Test fun movingAcrossGroupBoundaryDoesNotRegroupInterior() {
+        val before = WaveformMath.Window(100_075L, 120_075L)
+        val after = WaveformMath.Window(100_125L, 120_125L)
+        val size = WaveformMath.drawGroupSize(before, 300)
+        val a = WaveformMath.visibleGroupStarts(before, 3_000, size).toSet()
+        val b = WaveformMath.visibleGroupStarts(after, 3_000, size).toSet()
+        assertTrue(a.intersect(b).size >= a.size - 1)
+    }
+
+    @Test fun groupsAreAnchoredToZeroAndHandleInvalidInputs() {
+        val window = WaveformMath.Window(150L, 750L)
+        assertEquals(listOf(2, 4, 6, 8, 10, 12, 14),
+            WaveformMath.visibleGroupStarts(window, 20, 2).toList())
+        assertTrue(WaveformMath.visibleGroupStarts(window, 0, 2).none())
+        assertTrue(WaveformMath.visibleGroupStarts(
+            WaveformMath.Window(0L, 0L), 10, 1
+        ).none())
+    }
+
     @Test fun missingDurationIsHandled() {
         assertEquals(WaveformMath.Window(0L, 0L),
             WaveformMath.windowAround(1_000L, 0L, 10_000L))
