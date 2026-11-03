@@ -84,21 +84,33 @@ class BpmRepository(context: Context) {
     }
 
     /**
-     * SAF providers may issue a new URI after rename. Move all stored BPM data
-     * with it, including legacy records, without changing manual priority.
-     * Called only on SafeRenameService's worker.
+     * The newly renamed file already contains the chosen BPM in its filename.
+     * Preserve the automatic detection for comparison, but remove the manual
+     * override (including legacy records) so the F source becomes authoritative.
+     * Must work even if the provider keeps the same URI after rename.
      */
     fun migrate(before: Track, after: Track): Boolean {
         val oldKey = key(before)
         val newKey = key(after)
-        if (oldKey == newKey) return true
         val editor = prefs.edit()
-        for (suffix in listOf("", ".detected", ".manual")) {
-            prefs.getString(oldKey + suffix, null)?.let { value ->
-                editor.putString(newKey + suffix, value)
-                editor.remove(oldKey + suffix)
+        val legacyValue = legacy(before)
+        if (oldKey != newKey) {
+            for (suffix in listOf("", ".detected")) {
+                // Legacy manual values no longer apply after writing BPM to name.
+                if (suffix.isEmpty() && legacyValue?.source == BpmSource.MANUAL) {
+                    editor.remove(oldKey)
+                    continue
+                }
+                prefs.getString(oldKey + suffix, null)?.let { value ->
+                    editor.putString(newKey + suffix, value)
+                    editor.remove(oldKey + suffix)
+                }
             }
+        } else if (legacyValue?.source == BpmSource.MANUAL) {
+            editor.remove(oldKey)
         }
+        editor.remove(oldKey + ".manual")
+        editor.remove(newKey + ".manual")
         return editor.commit()
     }
 

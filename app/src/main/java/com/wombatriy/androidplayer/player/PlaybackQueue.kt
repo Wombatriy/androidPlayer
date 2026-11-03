@@ -36,6 +36,20 @@ class PlaybackQueue<T> {
         }
     }
 
+    /**
+     * The virtual All Tracks list can be reordered as batch BPM estimates arrive.
+     * Keep the current track selected by identity, never restart its media.
+     * A future playlist queue will only call this for its own source.
+     */
+    fun updateOrder(source: List<T>, sameItem: (T, T) -> Boolean) {
+        val selected = current ?: return
+        val snapshot = source.toList()
+        val index = snapshot.indexOfFirst { sameItem(it, selected) }
+        if (index < 0) return
+        items = snapshot
+        position = index
+    }
+
     fun previous(): T? {
         if (!hasPrevious) return null
         return items[--position]

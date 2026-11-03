@@ -48,6 +48,21 @@ class PlaybackQueueTest {
         assertEquals("three-renamed", q.next())
     }
 
+    @Test fun resyncingBpmOrderPreservesCurrentSelection() {
+        val q = makeQueue()
+        q.updateOrder(listOf("three", "one", "two")) { a, b -> a == b }
+        assertEquals("two", q.current)
+        assertEquals(2, q.position)
+        assertEquals("one", q.previous())
+    }
+
+    @Test fun missingCurrentTrackDoesNotDiscardExistingQueue() {
+        val q = makeQueue()
+        q.updateOrder(listOf("unrelated")) { a, b -> a == b }
+        assertEquals("two", q.current)
+        assertEquals(3, q.size)
+    }
+
     @Test fun selectingDoesNotMutateOriginalList() {
         val original = mutableListOf("one", "two")
         val q = PlaybackQueue<String>()

@@ -78,12 +78,16 @@ class SafeRenameService(context: Context) {
                     resolver, preview.oldTrack.uri, preview.proposedName
                 ) ?: error("Storage provider declined the rename")
 
-                val actualName = readName(newUri) ?: preview.proposedName
+                // The SAF rename is already committed. A failing metadata
+                // query must not report the rename as failed and replay an old URI.
+                val actualName = runCatching { readName(newUri) }.getOrNull()
+                    ?: preview.proposedName
                 val newTrack = preview.oldTrack.copy(uri = newUri, name = actualName)
-                // Keep prior position in the queue, but preserve alphabetical Library order.
+                // Keep the Library snapshot order here. LibraryScreen will sort
+                // numerically by active BPM, then update visible rows and anchor.
                 val updated = libraryTracks.map { current ->
                     if (current.uri == preview.oldTrack.uri) newTrack else current
-                }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+                }
 
                 val metadataOk = runCatching {
                     bpm.migrate(preview.oldTrack, newTrack)

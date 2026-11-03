@@ -284,8 +284,11 @@ copied, deleted or overwritten** by the app; however, arbitrary third-party
 SAF providers control their own rename semantics, so concurrent external
 file changes and provider-specific behavior must be tested on device.
 
-Renaming the currently loaded track is deliberately blocked until playback
-is moved into a MediaSessionService. Renaming is also blocked during a library
+The current track **can be renamed**. Once the user confirms, the player
+stops and releases its media descriptor, SAF renames the file on the worker,
+and playback restarts at **00:00** using the resulting URI. If the rename fails,
+the player attempts to restart the original track. A different track is
+renamed without interrupting music. Renaming is blocked during a library
 scan or BPM batch.
 
 SAF may return a different document URI after renaming. The app moves saved
@@ -307,3 +310,22 @@ minimize the app, with audio continuing in a MediaSessionService. This is a
 roadmap requirement only; the Activity still owns ExoPlayer in step 05.
 
 No GitHub Actions jobs have been started automatically for this change.
+
+### Follow-up improvements in PR #8
+
+- A second tap on the already loaded track does **nothing**, preserving the
+  play position, playback state and A–B markers.
+- Choosing another track starts playback but **stays on Library**. The Player
+  tab is still available for detailed controls.
+- After renaming with a manual BPM value, its saved **M** override is removed:
+  the new filename now carries the correct BPM and should display as **F**.
+  The auto-detected estimate remains stored for side-by-side comparisons.
+- Library/virtual All Tracks uses **numeric BPM ascending**, independent of
+  provenance (F/D/M). For example, 90, 100, 120, 236, 312; tracks without
+  a known BPM appear afterward in alphabetical order. BPM-based sorting is
+  live while batch detection is running. UI updates are coalesced (~450 ms),
+  retain the top visible item by **content URI**, and keep the current
+  queue position by file identity without restarting playback.
+- A future gesture UX task: swipe left/right between Player, Library,
+  Playlists, and Queue, carefully avoiding conflicts with dragging the
+  seekbar, the speed slider and vertical library scrolling.

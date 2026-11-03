@@ -89,7 +89,13 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [x] Rename via SAF on a worker; never copy media files or ask for blanket storage access
 - [x] Migrate saved BPM metadata when SAF changes the file URI; synchronize cached Library and playback queue
 - [x] Record parent document URI in a version 2 Library cache for fast sibling checks; first launch after upgrade performs one fresh scan
-- [x] Refuse to rename the currently loaded track or while a batch scan/BPM operation is active
+- [x] Allow rename of the currently loaded track: after confirmation stop/release media, rename, restart from 00:00, and recover original playback on failure
+- [x] Keep rename blocked during active folder scans or batch BPM analysis
+- [x] Clear persisted manual BPM after a successful rename because the value is now in the filename; retain detected BPM for comparison
+- [x] A second tap on the currently loaded song is a no-op (does not restart audio or clear the A–B loop)
+- [x] Selecting a different song from Library starts it without navigating away from Library
+- [x] Use numeric BPM ascending for ALL filename/manual/detected sources, with unknown tempos afterward alphabetically
+- [x] Apply batch BPM ordering in coalesced updates, preserve scroll by URI and update virtual All Tracks playback queue without restarting the current track
 - [x] Add JVM tests for above-300 BPM parsing, naming, collisions and queue-reference updates
 - [ ] Verify Android SAF rename on real storage providers and check cache/BPM across a full app restart
 - [ ] Later: bulk rename preview/confirm when a reliable batch workflow is needed
@@ -103,6 +109,7 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [ ] Keep audio files in their original directories; playlist changes must never move them
 
 ## 07 — Queue
+- [ ] Gesture navigation: swipe left/right across non-interactive content to switch Player ↔ Library ↔ Playlists ↔ Queue; prevent conflicts with the seek slider and ListView scrolling
 - [ ] Fourth tab reflects selected playlist
 - [ ] Reorder with drag handles; select and play any item
 - [ ] Synchronize player controls and end-of-track modes with active queue

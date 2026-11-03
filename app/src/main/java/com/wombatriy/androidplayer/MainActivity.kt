@@ -34,14 +34,21 @@ class MainActivity : Activity() {
     private lateinit var pages: List<View>
     private val prefs by lazy { getSharedPreferences("library", MODE_PRIVATE) }
     private val libraryRepository by lazy { LibraryRepository(this) }
-    private val renameFlow by lazy {
-        RenameFlow(this) { previous, result ->
-            playback.onLibraryTrackRenamed(previous, result.replacement)
-            libraryScreen.submitTracks(result.tracks)
-            batchAnalyzer.refreshSources(result.tracks)
-            loadedFromCache = result.cacheSaved
-            updateStatus()
-        }
+    private val renameFlow: RenameFlow by lazy {
+        RenameFlow(
+            activity = this,
+            onBeforeCommit = { track -> playback.suspendForRename(track) },
+            onRenamed = { previous, result, restart ->
+                playback.onLibraryTrackRenamed(previous, result.replacement, restart)
+                libraryScreen.submitTracks(result.tracks)
+                batchAnalyzer.refreshSources(result.tracks)
+                loadedFromCache = result.cacheSaved
+                updateStatus()
+            },
+            onFailed = { previous, restart ->
+                playback.restoreAfterFailedRename(previous, restart)
+            }
+        )
     }
     private val bpmCoordinator: BpmCoordinator by lazy {
         BpmCoordinator(this, ::onBpmChanged)
@@ -97,7 +104,8 @@ class MainActivity : Activity() {
         }
         libraryScreen.restorePosition(
             savedInstanceState?.getInt(STATE_SCROLL_INDEX) ?: prefs.getInt(KEY_SCROLL_INDEX, 0),
-            savedInstanceState?.getInt(STATE_SCROLL_OFFSET) ?: prefs.getInt(KEY_SCROLL_OFFSET, 0)
+            savedInstanceState?.getInt(STATE_SCROLL_OFFSET) ?: prefs.getInt(KEY_SCROLL_OFFSET, 0),
+            savedInstanceState?.getString(STATE_SCROLL_URI) ?: prefs.getString(KEY_SCROLL_URI, null)
         )
         showTab(activeTab)
         restoreFolder()
@@ -139,7 +147,8 @@ class MainActivity : Activity() {
             onRescan = ::rescanSelectedFolder,
             onBatchToggle = ::toggleBatchAnalysis,
             onTrackSelected = ::playTrack,
-            onTrackLongPressed = ::previewRename
+            onTrackLongPressed = ::previewRename,
+            onOrderChanged = { sorted -> playback.updateLibraryOrder(sorted) }
         )
         pages = listOf(
             playerScreen,
@@ -205,8 +214,13 @@ class MainActivity : Activity() {
     }
 
     private fun playTrack(track: Track) {
+        if (renameFlow.busy) {
+            Toast.makeText(this, "Finish renaming before selecting another track",
+                Toast.LENGTH_SHORT).show()
+            return
+        }
+        // Stay on the initiating tab. Tapping the already selected track is a no-op.
         playback.load(track, libraryScreen.tracksSnapshot())
-        showTab(0)
     }
 
     private fun chooseFolder() {
@@ -325,6 +339,7 @@ class MainActivity : Activity() {
         prefs.edit()
             .putInt(KEY_SCROLL_INDEX, libraryScreen.firstVisibleIndex)
             .putInt(KEY_SCROLL_OFFSET, libraryScreen.firstVisibleOffset)
+            .putString(KEY_SCROLL_URI, libraryScreen.firstVisibleUri)
             .apply()
     }
 
@@ -344,6 +359,7 @@ class MainActivity : Activity() {
         outState.putInt(STATE_TAB, activeTab)
         outState.putInt(STATE_SCROLL_INDEX, libraryScreen.firstVisibleIndex)
         outState.putInt(STATE_SCROLL_OFFSET, libraryScreen.firstVisibleOffset)
+        outState.putString(STATE_SCROLL_URI, libraryScreen.firstVisibleUri)
         super.onSaveInstanceState(outState)
     }
 
@@ -361,8 +377,10 @@ class MainActivity : Activity() {
         private const val KEY_TREE_URI = "treeUri"
         private const val KEY_SCROLL_INDEX = "scrollIndex"
         private const val KEY_SCROLL_OFFSET = "scrollOffset"
+        private const val KEY_SCROLL_URI = "scrollUri"
         private const val STATE_TAB = "tab"
         private const val STATE_SCROLL_INDEX = "libraryIndex"
         private const val STATE_SCROLL_OFFSET = "libraryOffset"
+        private const val STATE_SCROLL_URI = "libraryUri"
     }
 }

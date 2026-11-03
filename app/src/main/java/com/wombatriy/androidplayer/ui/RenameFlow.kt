@@ -13,7 +13,9 @@ import com.wombatriy.androidplayer.library.SafeRenameService
  */
 class RenameFlow(
     private val activity: Activity,
-    private val onRenamed: (Track, SafeRenameService.Outcome) -> Unit
+    private val onBeforeCommit: (Track) -> Boolean,
+    private val onRenamed: (Track, SafeRenameService.Outcome, Boolean) -> Unit,
+    private val onFailed: (Track, Boolean) -> Unit
 ) {
     private val service = SafeRenameService(activity)
     var busy: Boolean = false
@@ -36,13 +38,16 @@ class RenameFlow(
                     .setNegativeButton("Cancel", null)
                     .setPositiveButton("Rename") { _, _ ->
                         committing = true
+                        // Pause and release the loaded media only at confirmation,
+                        // after preview and initial SAF checks have succeeded.
+                        val restartCurrent = onBeforeCommit(track)
                         toast("Renaming…")
                         service.rename(preview, folder, snapshot) { result ->
                             committing = false
                             busy = false
                             if (activity.isFinishing || activity.isDestroyed) return@rename
                             result.onSuccess { updated ->
-                                onRenamed(track, updated)
+                                onRenamed(track, updated, restartCurrent)
                                 val warnings = buildList {
                                     if (!updated.cacheSaved) add("Rescan to refresh the saved library.")
                                     if (!updated.metadataPreserved) add("BPM metadata could not be moved.")
@@ -54,6 +59,7 @@ class RenameFlow(
                                     long = true
                                 )
                             }.onFailure { error ->
+                                onFailed(track, restartCurrent)
                                 toast("Rename failed: ${error.message}", long = true)
                             }
                         }

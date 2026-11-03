@@ -100,10 +100,16 @@ class PlaybackController(context: Context, private val listener: Listener) {
     }
 
     /**
-     * Library's alphabetical order acts as the initial playback queue.
+     * The Library's current BPM order acts as the virtual All Tracks queue.
      * Playlist-based queues will reuse this controller in a later iteration.
      */
     fun load(track: Track, libraryTracks: List<Track>) {
+        // A second tap on an already loaded item must not reset seek/loop state.
+        // Once a track has ended, selecting it is allowed to restart it.
+        if (currentTrack?.uri == track.uri &&
+            player.mediaItemCount > 0 && player.playbackState != Player.STATE_ENDED) {
+            return
+        }
         queue.select(track, libraryTracks)
         playTrack(track)
     }
@@ -120,9 +126,37 @@ class PlaybackController(context: Context, private val listener: Listener) {
         listener.onPlaybackControlsChanged()
     }
 
-    /** Keep a queued, not-current file playable if its SAF URI changes on rename. */
-    fun onLibraryTrackRenamed(previous: Track, replacement: Track) {
+    /**
+     * Release the file descriptor only after the rename confirmation.
+     * For another (non-current) track, playback continues uninterrupted.
+     * Return true when the current track must restart after the operation.
+     */
+    fun suspendForRename(track: Track): Boolean {
+        if (currentTrack?.uri != track.uri) return false
+        player.pause()
+        player.stop()
+        player.clearMediaItems()
+        listener.onPlaybackControlsChanged()
+        return true
+    }
+
+    /** Keep Next/Previous in sync with newly detected BPM sorting. */
+    fun updateLibraryOrder(tracks: List<Track>) {
+        queue.updateOrder(tracks) { a, b -> a.uri == b.uri }
+        listener.onPlaybackControlsChanged()
+    }
+
+    /** Update the queue's URI; restart the renamed current track from 00:00. */
+    fun onLibraryTrackRenamed(previous: Track, replacement: Track, restart: Boolean = false) {
         queue.replaceReference(previous, replacement)
+        if (restart && currentTrack?.uri == previous.uri) {
+            playTrack(replacement)
+        }
+    }
+
+    /** Restore the original URI if the SAF provider rejected the rename. */
+    fun restoreAfterFailedRename(previous: Track, restart: Boolean) {
+        if (restart && currentTrack?.uri == previous.uri) playTrack(previous)
     }
 
     fun next() {

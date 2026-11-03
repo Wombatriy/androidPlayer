@@ -19,6 +19,7 @@ import com.wombatriy.androidplayer.bpm.BatchBpmPolicy
 import com.wombatriy.androidplayer.bpm.BpmFormatting
 import com.wombatriy.androidplayer.bpm.BpmRecord
 import com.wombatriy.androidplayer.bpm.BpmSource
+import com.wombatriy.androidplayer.library.LibraryOrder
 
 /**
  * Retained library with recycled ListView rows. No file/BPM I/O runs in
@@ -30,7 +31,8 @@ class LibraryScreen(
     onRescan: () -> Unit,
     onBatchToggle: () -> Unit,
     private val onTrackSelected: (Track) -> Unit,
-    private val onTrackLongPressed: (Track) -> Unit
+    private val onTrackLongPressed: (Track) -> Unit,
+    private val onOrderChanged: (List<Track>) -> Unit
 ) : LinearLayout(context) {
     private val adapter = TrackAdapter(context)
     private val list = ListView(context).apply {
@@ -54,6 +56,8 @@ class LibraryScreen(
     private val batchInfo = context.textLine("", 12f)
     private var restoreIndex: Int? = null
     private var restoreOffset = 0
+    private var restoreUri: String? = null
+    private var sortScheduled = false
     private var scanning = false
 
     init {
@@ -98,10 +102,13 @@ class LibraryScreen(
     fun tracksSnapshot(): List<Track> = adapter.snapshot()
     val firstVisibleIndex: Int get() = list.firstVisiblePosition
     val firstVisibleOffset: Int get() = list.getChildAt(0)?.top ?: 0
+    val firstVisibleUri: String?
+        get() = adapter.snapshot().getOrNull(list.firstVisiblePosition)?.uri?.toString()
 
-    fun restorePosition(index: Int, offsetPx: Int) {
+    fun restorePosition(index: Int, offsetPx: Int, uri: String? = null) {
         restoreIndex = index.coerceAtLeast(0)
         restoreOffset = offsetPx
+        restoreUri = uri
     }
 
     fun setLoading(loading: Boolean) {
@@ -135,23 +142,50 @@ class LibraryScreen(
     }
 
     fun submitTracks(tracks: List<Track>) {
+        val previousAnchor = restoreUri ?: firstVisibleUri
         val index = restoreIndex ?: list.firstVisiblePosition
         val offset = if (restoreIndex != null) restoreOffset else firstVisibleOffset
         adapter.submit(tracks)
-        val target = index.coerceIn(0, (tracks.size - 1).coerceAtLeast(0))
-        if (tracks.isNotEmpty()) list.post { list.setSelectionFromTop(target, offset) }
+        onOrderChanged(adapter.snapshot())
+        val anchored = adapter.indexOfUri(previousAnchor)
+        val target = if (anchored >= 0) anchored
+            else index.coerceIn(0, (adapter.count - 1).coerceAtLeast(0))
+        if (adapter.count > 0) list.post { list.setSelectionFromTop(target, offset) }
         restoreIndex = null
+        restoreUri = null
         setLoading(false)
     }
 
     /** Initial metadata replaces the snapshot; decoded chunks update existing rows. */
     fun updateBpmRecords(records: Map<String, BpmRecord>, replace: Boolean = false) {
         adapter.updateBpm(records, replace)
+        scheduleSort()
     }
 
-    /** Update exactly one track's badge after a foreground manual/detected change. */
+    /** Update a foreground-selected song without reordering for every callback. */
     fun updateOneBpm(track: Track, record: BpmRecord?) {
         adapter.updateOne(track.uri.toString(), record)
+        scheduleSort()
+    }
+
+    /**
+     * Batch analysis emits results in small groups. Coalesce sorting to at most
+     * once every 450ms, then restore the same first visible URI and pixel offset.
+     * Scrolling does not jump to the top while BPM values are discovered.
+     */
+    private fun scheduleSort() {
+        if (sortScheduled) return
+        sortScheduled = true
+        list.postDelayed({
+            sortScheduled = false
+            val anchor = firstVisibleUri
+            val offset = firstVisibleOffset
+            if (adapter.resort()) {
+                onOrderChanged(adapter.snapshot())
+                val target = adapter.indexOfUri(anchor)
+                if (target >= 0) list.post { list.setSelectionFromTop(target, offset) }
+            }
+        }, 450L)
     }
 
     private class TrackAdapter(private val context: Context) : BaseAdapter() {
@@ -161,10 +195,30 @@ class LibraryScreen(
         fun snapshot(): List<Track> = items
 
         fun submit(newItems: List<Track>) {
-            items = newItems
             bpmValues.clear()
+            items = sorted(newItems)
             notifyDataSetChanged()
         }
+
+        fun indexOfUri(uri: String?): Int =
+            if (uri == null) -1 else items.indexOfFirst { it.uri.toString() == uri }
+
+        fun resort(): Boolean {
+            val next = sorted(items)
+            if (next == items) return false
+            items = next
+            notifyDataSetChanged()
+            return true
+        }
+
+        private fun sorted(tracks: List<Track>): List<Track> =
+            LibraryOrder.sorted(
+                tracks,
+                { track ->
+                    bpmValues[track.uri.toString()]?.bpm ?: track.filenameBpm?.toDouble()
+                },
+                { it.name }
+            )
 
         fun updateBpm(rows: Map<String, BpmRecord>, replace: Boolean) {
             if (replace) bpmValues.clear()
