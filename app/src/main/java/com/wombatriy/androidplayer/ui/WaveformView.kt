@@ -15,6 +15,7 @@ import com.wombatriy.androidplayer.waveform.WaveformAnimationPolicy
 import com.wombatriy.androidplayer.waveform.WaveformFrameClock
 import com.wombatriy.androidplayer.waveform.WaveformData
 import com.wombatriy.androidplayer.waveform.WaveformMath
+import com.wombatriy.androidplayer.waveform.WaveformSeekFence
 import com.wombatriy.androidplayer.waveform.WaveformTileRenderer
 import kotlin.math.abs
 import kotlin.math.max
@@ -38,8 +39,6 @@ class WaveformView(
         // 30 fps is smooth enough for a 20-second viewport, and lets the
         // UI thread prioritize Play/Pause, speed and transport input.
         private const val FRAME_INTERVAL_MS = 32L
-        private const val SEEK_CONFIRM_TIMEOUT_NS = 1_200_000_000L
-        private const val SEEK_STABILIZE_NS = 600_000_000L
         private const val PRELOAD_AROUND_WINDOW_MS = 10_000L
     }
 
@@ -68,9 +67,7 @@ class WaveformView(
     private var externalScrubbing = false
     private var frameScheduled = false
     private var stopped = false
-    private var pendingSeekTarget: Long? = null
-    private var pendingSeekAtNanos = 0L
-    private var ignoreOldSamplesUntilNanos = 0L
+    private val seekFence = WaveformSeekFence()
     private var lastFrameNanos = 0L
     private var lastWarningNanos = 0L
     private val smoothClock = WaveformFrameClock()
@@ -158,9 +155,7 @@ class WaveformView(
     fun onSeekRequested(targetMs: Long) {
         val now = SystemClock.elapsedRealtimeNanos()
         val target = targetMs.coerceIn(0L, durationMs.coerceAtLeast(0L))
-        pendingSeekTarget = target
-        pendingSeekAtNanos = now
-        ignoreOldSamplesUntilNanos = now + SEEK_STABILIZE_NS
+        seekFence.begin(target, now)
         smoothClock.sync(target, now, playbackSpeed(), playbackRunning(),
             durationMs, force = true)
         if (!tracking && !externalScrubbing) {
@@ -173,9 +168,7 @@ class WaveformView(
     fun onSeekApplied(actualMs: Long) {
         val now = SystemClock.elapsedRealtimeNanos()
         val actual = actualMs.coerceIn(0L, durationMs.coerceAtLeast(0L))
-        val requested = pendingSeekTarget
-        pendingSeekTarget = null
-        ignoreOldSamplesUntilNanos = now + SEEK_STABILIZE_NS
+        val requested = seekFence.confirmed(now)
         smoothClock.sync(
             actual, now, playbackSpeed(), playbackRunning(), durationMs,
             force = requested == null || kotlin.math.abs(actual - requested) > 1_200L
@@ -186,18 +179,12 @@ class WaveformView(
         }
     }
 
-    /** Skip raw samples during asynchronous seek settlement. */
-    private fun shouldIgnoreRawPosition(nowNanos: Long): Boolean {
-        if (pendingSeekTarget != null &&
-            nowNanos - pendingSeekAtNanos > SEEK_CONFIRM_TIMEOUT_NS) {
-            pendingSeekTarget = null
-        }
-        return pendingSeekTarget != null || nowNanos < ignoreOldSamplesUntilNanos
-    }
+    private fun shouldIgnoreRawPosition(nowNanos: Long): Boolean =
+        seekFence.ignoreOldSample(nowNanos)
 
-    private fun sampledPosition(nowNanos: Long, ordinaryTicker: Long? = null): Long =
+    private fun sampledPosition(nowNanos: Long): Long =
         if (shouldIgnoreRawPosition(nowNanos)) smoothClock.positionAt(nowNanos)
-        else ordinaryTicker ?: playbackPosition()
+        else playbackPosition()
 
     /** Pausing/resuming changes the clock slope, never its visual origin. */
     fun refreshAnimationState() {
@@ -258,6 +245,7 @@ class WaveformView(
         // Old tile must never be displayed for a different audio file.
         tiles.cancel()
         tile = null
+        if (value == null) seekFence.clear()
         if (durationMs <= 0L && value != null) durationMs = value.durationMs
         invalidate()
         refreshAnimationState()
