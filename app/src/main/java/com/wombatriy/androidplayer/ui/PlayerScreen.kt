@@ -44,7 +44,8 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
         context,
         onSeek = playback::seekTo,
         playbackPosition = { playback.currentPosition },
-        playbackRunning = { playback.isPlaying }
+        playbackRunning = { playback.isPlaying },
+        playbackSpeed = { playback.speed }
     )
     private val waveformStatus = context.textLine("", 12f).apply {
         visibility = View.GONE
@@ -280,6 +281,7 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
         if (speedBar.progress != newProgress) speedBar.progress = newProgress
         speedLabel.text = String.format(Locale.US, "%.2f×", playback.speed)
         speedLabel.contentDescription = "Playback speed $percent percent. Tap to enter manually."
+        waveformView.refreshAnimationState()
         refreshBpm()
     }
 
