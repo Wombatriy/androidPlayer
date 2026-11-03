@@ -10,7 +10,6 @@ import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.math.ceil
 import kotlin.math.max
 
 /**
@@ -40,7 +39,9 @@ class WaveformTileRenderer(private val onReady: (Tile) -> Unit) {
         val windowMs: Long,
         val viewWidth: Int,
         val viewHeight: Int,
-        val groupSize: Int
+        val groupSize: Int,
+        val firstPixel: Long,
+        val pixelCount: Int
     )
 
     private val main = Handler(Looper.getMainLooper())
@@ -66,12 +67,14 @@ class WaveformTileRenderer(private val onReady: (Tile) -> Unit) {
     ) {
         if (closed || window.lengthMs <= 0L || contentWidthPx <= 0 ||
             viewHeight <= 0) return
-        val buffered = WaveformMath.bufferedTileWindow(window, durationMs)
-        val firstMs = buffered.startMs
-        val lastMs = buffered.endMs
+        val grid = WaveformMath.rasterGrid(
+            window, durationMs, contentWidthPx
+        )
+        if (grid.pixelCount <= 0) return
         val key = Request(
-            waveform, firstMs, lastMs, window.lengthMs,
-            contentWidthPx, viewHeight, groupSize
+            waveform, grid.window.startMs, grid.window.endMs,
+            window.lengthMs, contentWidthPx, viewHeight, groupSize,
+            grid.firstPixel, grid.pixelCount
         )
         // A pending image covering the moving viewport is good enough.
         val previous = pending
@@ -119,10 +122,7 @@ class WaveformTileRenderer(private val onReady: (Tile) -> Unit) {
         if (generation != sequence.get() || closed) {
             throw java.util.concurrent.CancellationException("Stale waveform tile")
         }
-        val contentLength = request.endMs - request.startMs
-        val pixelsPerMs = request.viewWidth.toDouble() / request.windowMs
-        val bitmapWidth = ceil(contentLength * pixelsPerMs)
-            .toInt().coerceIn(1, request.viewWidth * 2 + 2)
+        val bitmapWidth = request.pixelCount
         val mutedBitmap = Bitmap.createBitmap(
             bitmapWidth, request.viewHeight, Bitmap.Config.ARGB_8888
         )
@@ -159,7 +159,9 @@ class WaveformTileRenderer(private val onReady: (Tile) -> Unit) {
                     generation != sequence.get() || closed)) {
                 throw java.util.concurrent.CancellationException("Stale waveform tile")
             }
-            val sampleStartMs = request.startMs + column * msPerPixel
+            // All tiles use the same absolute source-pixel grid. A peak
+            // won't subtly change shape when a newer tile replaces one.
+            val sampleStartMs = (request.firstPixel + column) * msPerPixel
             val sampleEndMs = minOf(
                 request.endMs.toDouble(), sampleStartMs + msPerPixel
             )
