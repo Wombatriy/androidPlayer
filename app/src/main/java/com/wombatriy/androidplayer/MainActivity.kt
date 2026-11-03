@@ -418,6 +418,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        playerScreen.close()
         renameFlow.close()
         batchAnalyzer.close()
         bpmCoordinator.close()

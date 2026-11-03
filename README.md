@@ -433,3 +433,66 @@ Vertical list scrolling, buttons, SeekBars, text input, dropdowns and
 
 Background playback and Android Back behavior remain in stage 09.
 GitHub Actions is manual-only and must not be automatically dispatched.
+
+## Iteration 08 — waveform preview and visual A–B editor
+
+Player now contains a **compact waveform** above the familiar position seek bar.
+It shows the amplitude envelope for the full song, the current playhead,
+and draggable colored **A/B markers**. The selected loop interval is shaded.
+
+- **Tap** the waveform to seek to that time (subject to the normal existing
+  A–B loop bounds).
+- **Long-press** the waveform at a desired position to choose **Set A here**
+  or **Set B here**.
+- **Drag** the A or B vertical marker to move it; while dragging, the
+  player does not repeatedly force a seek. On release, it validates the
+  playback position against the new loop range.
+- The existing A, B and Clear-loop buttons remain unchanged and stay in
+  sync with the waveform. The normal SeekBar still works.
+
+### Background processing and cache
+
+A single low-priority worker decodes PCM into **512 peak amplitude buckets**.
+No full-song PCM buffer is retained, even for a long song. The lightweight
+waveform rendering uses the cached buckets and updates with normal playback
+ticks. Files in the app-private `filesDir/waveforms-v1` cache contain only the
+waveform data (~528 bytes per song) with atomic writes, hashed by SAF URI.
+Saved files can be reused after restarting the app.
+
+The decoder is coordinated with BPM analysis: **at most two active audio
+decoders in total**, and only one waveform job at a time. Choosing another
+song cancels the prior waveform task; obsolete results never appear on the
+new song. A failed/unsupported waveform never prevents playback.
+
+As a resource-safety limit, the initial implementation does not generate a
+waveform for songs **longer than 25 minutes** or decoding jobs taking over
+120 seconds. It shows a small explanatory status instead. The song itself
+still plays normally, including all playlist and loop controls.
+
+### Loop timing
+
+The active A–B loop is checked every **~25 ms**, while ordinary UI updates
+remain about every **120 ms**. This reduces overshooting point B compared
+to the prior 120 ms checks, but standard Media3 seeks are **not sample-accurate
+or guaranteed seamless**. Sample-accurate audio loops remain future DSP work.
+
+### Check on the phone
+1. Play a new MP3/FLAC track: waveform should appear after background
+   processing without affecting Play/Pause, speed or scrolling.
+2. Play the same song again / restart the app and open it again: the cached
+   waveform should appear much faster, without another full decode.
+3. Tap a waveform position, long-press to set A/B, and drag the markers
+   both ways; the A/B times and shaded region must remain synchronized.
+4. Enable an A–B loop, try seeking before A and after B, and listen for
+   earlier loop return near B without undue buffering or audible glitches.
+5. Run Batch BPM concurrently with waveform calculation; the phone should
+   remain responsive and not start excessive parallel decoders.
+6. Rapidly select multiple songs; older waveforms must never flash over
+   the newly selected song.
+7. Change tabs by swiping, adjust speed and the SeekBar, and drag a marker:
+   no conflict with gesture navigation or playlist drag/drop.
+8. Check very long or unsupported files: waveform may be unavailable but
+   playback and the rest of Player must work.
+
+Android Back / media session / background playback remain stage 09.
+GitHub Actions remains manual-only and was not triggered.

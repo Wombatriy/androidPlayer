@@ -3,6 +3,7 @@ package com.wombatriy.androidplayer.player
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.PlaybackException
@@ -34,6 +35,7 @@ class PlaybackController(context: Context, private val listener: Listener) {
     var queueSourceLabel: String = "All Tracks"
         private set
     private var released = false
+    private var lastUiTick = 0L
 
     var currentTrack: Track? = null
         private set
@@ -77,8 +79,15 @@ class PlaybackController(context: Context, private val listener: Listener) {
                     position = corrected
                 }
             }
-            listener.onPositionChanged(position, duration)
-            handler.postDelayed(this, 120L)
+            val now = SystemClock.elapsedRealtime()
+            if (loop == null || now - lastUiTick >= 110L) {
+                listener.onPositionChanged(position, duration)
+                lastUiTick = now
+            }
+            // Keep the UI at ~8fps, but check active A–B boundaries more
+            // frequently to reduce audible overshoot without redrawing more.
+            handler.postDelayed(this,
+                if (loop != null && player.playWhenReady) 25L else 120L)
         }
     }
 
@@ -272,16 +281,25 @@ class PlaybackController(context: Context, private val listener: Listener) {
 
     fun skipBy(deltaMs: Long) = seekTo(currentPosition + deltaMs)
 
-    fun setA() {
-        pointA = currentPosition
+    fun setA() = setAAt(currentPosition)
+    fun setB() = setBAt(currentPosition)
+
+    /** Supports dragging waveform markers without forcing a seek every frame. */
+    fun setAAt(ms: Long, finalize: Boolean = true) {
+        pointA = clampToTrack(ms)
         listener.onLoopChanged()
-        normalizeCurrentPosition()
+        if (finalize) normalizeCurrentPosition()
     }
 
-    fun setB() {
-        pointB = currentPosition
+    fun setBAt(ms: Long, finalize: Boolean = true) {
+        pointB = clampToTrack(ms)
         listener.onLoopChanged()
-        normalizeCurrentPosition()
+        if (finalize) normalizeCurrentPosition()
+    }
+
+    private fun clampToTrack(ms: Long): Long {
+        val atLeastZero = ms.coerceAtLeast(0L)
+        return if (duration > 0L) atLeastZero.coerceAtMost(duration) else atLeastZero
     }
 
     fun clearLoop() {

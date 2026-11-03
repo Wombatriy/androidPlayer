@@ -21,6 +21,7 @@ import com.wombatriy.androidplayer.bpm.BpmCoordinator
 import com.wombatriy.androidplayer.player.EndMode
 import com.wombatriy.androidplayer.player.TempoMath
 import com.wombatriy.androidplayer.player.PlaybackController
+import com.wombatriy.androidplayer.waveform.WaveformCoordinator
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -39,6 +40,26 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
     private val errorLabel = context.textLine()
     private val positionLabel = context.textLine("00:00 / 00:00")
     private val positionBar = SeekBar(context)
+    private val waveformView = WaveformView(
+        context,
+        onSeek = playback::seekTo,
+        onMarkerChanged = { marker, at, finalize ->
+            when (marker) {
+                WaveformView.Marker.A -> playback.setAAt(at, finalize)
+                WaveformView.Marker.B -> playback.setBAt(at, finalize)
+            }
+        },
+        onLongPressAt = ::showWaveformMarkerMenu
+    )
+    private val waveformStatus = context.textLine("", 12f).apply {
+        visibility = View.GONE
+        setTextColor(Color.rgb(91, 105, 109))
+    }
+    private val waveformCoordinator = WaveformCoordinator(context) { waveform, message ->
+        waveformView.setWaveform(waveform)
+        waveformStatus.text = message
+        waveformStatus.visibility = if (message.isBlank()) View.GONE else View.VISIBLE
+    }
     private val playButton = context.actionButton("Play") { playback.togglePlayPause() }
     private val previousButton = context.actionButton("Previous") { playback.previous() }
     private val nextButton = context.actionButton("Next") { playback.next() }
@@ -67,6 +88,9 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
         column.addView(controls)
 
         controls.addView(positionLabel)
+        controls.addView(waveformView,
+            LinearLayout.LayoutParams(-1, context.dp(112)))
+        controls.addView(waveformStatus)
         controls.addView(positionBar)
         positionBar.max = 1000
         positionBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -75,6 +99,7 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
                 if (fromUser) {
                     val at = (playback.duration * progress.toLong()) / 1000L
                     positionLabel.text = "${format(at)} / ${format(playback.duration)}"
+                    waveformView.setPlayback(at, playback.duration)
                 }
             }
             override fun onStopTrackingTouch(bar: SeekBar) {
@@ -179,6 +204,13 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
         updatePlaybackState()
         updateLoop()
         refreshSpeed()
+        waveformCoordinator.select(track, playback.duration)
+    }
+
+    /** Shut down the waveform worker when the Activity is destroyed. */
+    fun close() {
+        bpmDialog?.dismiss()
+        waveformCoordinator.close()
     }
 
     fun showPlaybackError(message: String) {
@@ -189,6 +221,7 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
     /** Called from the playback ticker without replacing any controls. */
     fun updatePosition(positionMs: Long, durationMs: Long) {
         if (isScrubbing) return
+        waveformView.setPlayback(positionMs, durationMs)
         positionBar.progress = if (durationMs > 0) {
             ((positionMs.coerceAtLeast(0L).toDouble() / durationMs) * 1000)
                 .toInt().coerceIn(0, 1000)
@@ -214,6 +247,7 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
     fun updateLoop() {
         val a = playback.pointA
         val b = playback.pointB
+        waveformView.setMarkers(a, b)
         loopLabel.visibility = if (a == null && b == null) View.GONE else View.VISIBLE
         loopLabel.text = buildString {
             if (a != null) append("A ${format(a)}")
@@ -247,6 +281,17 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
                 " (${result.source.caption})$adjusted"
         }
         bpmPanel?.refresh()
+    }
+
+    /** Long-press a location on the waveform to place either loop endpoint. */
+    private fun showWaveformMarkerMenu(timeMs: Long) {
+        AlertDialog.Builder(context)
+            .setTitle("Set marker at ${format(timeMs)}")
+            .setItems(arrayOf("Set A here", "Set B here")) { _, choice ->
+                if (choice == 0) playback.setAAt(timeMs)
+                else playback.setBAt(timeMs)
+            }
+            .show()
     }
 
     private fun cycleEndMode() {
