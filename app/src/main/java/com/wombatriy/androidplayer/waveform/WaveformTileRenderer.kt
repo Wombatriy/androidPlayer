@@ -131,41 +131,50 @@ class WaveformTileRenderer(private val onReady: (Tile) -> Unit) {
         )
         val mutedCanvas = Canvas(mutedBitmap)
         val playedCanvas = Canvas(playedBitmap)
-        val stroke = max(1f,
-            (WaveformMath.BIN_DURATION_MS * request.groupSize *
-                pixelsPerMs * 0.82).toFloat()
-        )
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            // Rasterize the actual colors once in the worker. Applying
-            // PorterDuff color filters to a moving mask on every UI frame
-            // can exhibit uneven GPU blending/flicker on some devices.
+        /*
+         * Draw a solid vertical envelope at each destination pixel rather
+         * than hundreds of isolated antialiased 1–2px strokes.
+         *
+         * At the default zoom, a 50ms bin occupies only a few pixels.
+         * Moving the previous striped bitmap by a fractional pixel made
+         * transparent gaps flicker as the GPU bilinearly resampled it.
+         * Contiguous fully-filled columns keep interior pixels opaque and
+         * retain smooth subpixel scrolling (no integer snapping / judder).
+         */
+        val mutedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.rgb(153, 184, 184)
-            style = Paint.Style.STROKE
-            strokeCap = Paint.Cap.ROUND
-            strokeWidth = stroke
+            style = Paint.Style.FILL
+        }
+        val playedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(0, 119, 116)
+            style = Paint.Style.FILL
         }
         val centerY = request.viewHeight * 0.5f
         val heightScale = request.viewHeight * 0.29f
         val levels = request.source.levels
-        for (first in WaveformMath.visibleGroupStarts(
-            WaveformMath.Window(request.startMs, request.endMs),
-            levels.size, request.groupSize
-        )) {
-            if (Thread.currentThread().isInterrupted ||
-                generation != sequence.get() || closed) {
+        val msPerPixel = request.windowMs.toDouble() / request.viewWidth
+        for (column in 0 until bitmapWidth) {
+            if (column % 64 == 0 &&
+                (Thread.currentThread().isInterrupted ||
+                    generation != sequence.get() || closed)) {
                 throw java.util.concurrent.CancellationException("Stale waveform tile")
             }
-            val last = (first + request.groupSize - 1).coerceAtMost(levels.lastIndex)
-            var peak = 0
-            for (index in first..last) peak = maxOf(peak, levels[index].toInt() and 255)
-            val centerTime = (first.toLong() + (last - first + 1) / 2.0) *
-                WaveformMath.BIN_DURATION_MS
-            val x = ((centerTime - request.startMs) * pixelsPerMs).toFloat()
+            val sampleStartMs = request.startMs + column * msPerPixel
+            val sampleEndMs = minOf(
+                request.endMs.toDouble(), sampleStartMs + msPerPixel
+            )
+            val peak = WaveformMath.peakForPixel(
+                levels, sampleStartMs, sampleEndMs
+            )
             val half = max(1f, heightScale * peak / 255f)
-            mutedCanvas.drawLine(x, centerY - half, x, centerY + half, paint)
-            paint.color = Color.rgb(0, 119, 116)
-            playedCanvas.drawLine(x, centerY - half, x, centerY + half, paint)
-            paint.color = Color.rgb(153, 184, 184)
+            val left = column.toFloat()
+            val right = left + 1f
+            mutedCanvas.drawRect(
+                left, centerY - half, right, centerY + half, mutedPaint
+            )
+            playedCanvas.drawRect(
+                left, centerY - half, right, centerY + half, playedPaint
+            )
         }
         return Tile(
             request.source, request.startMs, request.endMs, request.windowMs,
