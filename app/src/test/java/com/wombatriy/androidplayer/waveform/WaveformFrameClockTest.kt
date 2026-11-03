@@ -46,6 +46,38 @@ class WaveformFrameClockTest {
         assertTrue(clock.positionAt(416_000_000L) > clock.positionAt(400_000_000L))
     }
 
+    @Test fun pauseWithSlightlyStaleMediaPositionDoesNotJumpBackward() {
+        val clock = WaveformFrameClock()
+        clock.sync(10_000L, 0L, 1f, true, 240_000L)
+        assertEquals(10_400L, clock.positionAt(400_000_000L))
+
+        // Media3 sometimes reports an earlier position during pause.
+        clock.sync(10_200L, 400_000_000L, 1f, false, 240_000L)
+        assertEquals(10_400L, clock.positionAt(400_000_000L))
+        assertEquals(10_400L, clock.positionAt(800_000_000L))
+
+        // On resume the visual timeline continues from its frozen position.
+        clock.sync(10_240L, 1_000_000_000L, 1f, true, 240_000L)
+        assertEquals(10_400L, clock.positionAt(1_000_000_000L))
+        assertEquals(10_500L, clock.positionAt(1_100_000_000L))
+    }
+
+    @Test fun tempoChangesOnlyChangeSlopeNotVisualPosition() {
+        val clock = WaveformFrameClock()
+        clock.sync(20_000L, 0L, 1f, true, 240_000L)
+        assertEquals(20_300L, clock.positionAt(300_000_000L))
+        clock.sync(20_120L, 300_000_000L, 0.7f, true, 240_000L)
+        assertEquals(20_300L, clock.positionAt(300_000_000L))
+        assertEquals(20_650L, clock.positionAt(800_000_000L))
+    }
+
+    @Test fun explicitSeekStillSnapsImmediately() {
+        val clock = WaveformFrameClock()
+        clock.sync(20_000L, 0L, 1f, true, 240_000L)
+        clock.sync(21_000L, 200_000_000L, 1f, true, 240_000L, force = true)
+        assertEquals(21_000L, clock.positionAt(200_000_000L))
+    }
+
     @Test fun stopsAtDurationAndHandlesInvalidSpeed() {
         val clock = WaveformFrameClock()
         clock.sync(990, 0L, Float.NaN, true, 1_000)
