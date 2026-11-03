@@ -197,12 +197,30 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [ ] **Verify** system Stop, force-stop, playback after screen off, Bluetooth disconnect and phone interruption; Android/OEM battery-management differences
 - [ ] **Verify** that a long A–B loop and non-default speed continue while the Activity is destroyed and re-created
 
-## 10 — High-quality time-stretch DSP (moved to the end)
-- [ ] Prioritize fidelity for **0.8×–1.1×**; outside that range, current Sonic is acceptable
-- [x] Trial Android audio mixer and Sonic; tester reported audible crackling from mixer, so experimental path was removed
-- [ ] Compare Rubber Band / SoundTouch or another proven DSP with license review
-- [ ] Benchmark latency, CPU, pitch preservation, percussion transients and A–B looping
-- [ ] Integrate a better real-time time-stretch engine only after listening tests
+## 10 — Higher-quality time stretching (incremental)
+
+### 10A — Safe DSP foundation (PR #13)
+- [x] Extract existing Sonic ExoPlayer construction into a single AudioEngineFactory, retaining current audio attributes and service lifetime
+- [x] Add explicit, tested speed-to-duration ratio and 0.8×–1.1× priority contract
+- [x] Add optional Windows PowerShell offline real-time-mode R3 listening comparison script; no GPL code bundled or downloaded by Android builds
+- [x] Document GPL vs commercial Rubber Band and LGPL SoundTouch choices
+- [ ] Build and test default Sonic playback unchanged on a phone
+- [ ] After licensing route is chosen, implement an opt-in Android NDK + Media3 PCM AudioProcessorChain integration for Rubber Band R3
+
+### 10B — A/B listening
+- [ ] Compare known rhythmic tracks at 0.80, 0.85, 0.90, 0.95, 1.05, 1.10
+- [ ] Prioritize percussion attacks, cymbal decay, bass and vocals
+- [ ] Compare actual realtime output to Sonic on the same phone
+
+### 10C — Stability and performance
+- [ ] Benchmark CPU, start latency, drift, buffering, A–B loop wrap, waveform clock and foreground service
+- [ ] Preserve current Sonic as fall-back, never switch engines in the middle of a seek
+
+### 10D — Selection and polishing
+- [ ] Adopt a new DSP by default only after repeatable audible improvement
+- [ ] Evaluate improvements outside 0.80×–1.10× if practical
+
+Past experiment: Android platform mixer produced audible crackles and was removed.
 
 ## Engineering constraints
 - Kotlin, AndroidX Media3, SAF (no blanket storage permission).

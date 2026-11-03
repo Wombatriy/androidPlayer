@@ -6,12 +6,11 @@ import android.os.Looper
 import android.os.SystemClock
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
-import androidx.media3.common.AudioAttributes
-import androidx.media3.common.C
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
+import com.wombatriy.androidplayer.player.audio.AudioEngineFactory
+import com.wombatriy.androidplayer.player.audio.TimeStretchPlanner
 import com.wombatriy.androidplayer.Track
 
 /**
@@ -52,19 +51,7 @@ class PlaybackController(context: Context) {
     }
 
     private val prefs = context.getSharedPreferences("playback", Context.MODE_PRIVATE)
-    private val player = ExoPlayer.Builder(context).build().apply {
-        // The service, not an Activity, handles music focus, noisy unplug
-        // events, and CPU wake locks during background playback.
-        setAudioAttributes(
-            AudioAttributes.Builder()
-                .setUsage(C.USAGE_MEDIA)
-                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-                .build(),
-            true
-        )
-        setHandleAudioBecomingNoisy(true)
-        setWakeMode(C.WAKE_MODE_LOCAL)
-    }
+    private val player = AudioEngineFactory.create(context)
     /** Exposed only to the MediaSessionService's forwarding session player. */
     val sessionPlayer: Player get() = player
     private val queue = PlaybackQueue<Track>()
@@ -404,7 +391,9 @@ class PlaybackController(context: Context) {
     }
 
     fun setSpeed(value: Float) {
-        require(value in 0.25f..1.50f)
+        // Preserves the existing Media3/Sonic behavior; the plan also defines
+        // the time-ratio contract for the future optional native processor.
+        TimeStretchPlanner.fromSpeed(value)
         player.setPlaybackSpeed(value)
         notifyListeners { it.onSpeedChanged() }
     }

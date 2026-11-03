@@ -827,3 +827,23 @@ The remaining roadmap step is to assess a fidelity-oriented DSP for
 0.8×–1.1× and integrate it only if listening tests beat Media3's current
 Sonic-based speed control without crackling. The current playback
 pipeline is not modified in this service iteration.
+
+## Iteration 10A — DSP foundation and licensing evaluation
+
+The standard Media3/Sonic audio player is still the only enabled audio engine.
+The construction of ExoPlayer, audio focus handling and wakelock configuration
+now lives in the isolated AudioEngineFactory. This prepares a controlled future
+RenderersFactory-based native time-stretch integration without touching the
+MediaSessionService or Activity lifecycle.
+
+TimeStretchPlanner defines and tests tempo-to-duration conversion, preserving
+pitch, with dance-quality priority at 0.80×–1.10×. For listening comparisons,
+see [docs/10A-audio-dsp.md](docs/10A-audio-dsp.md) and the optional Windows
+[Rubber Band R3 render script](tools/dsp/render-r3-samples.ps1). The script
+requires FFmpeg and the Rubber Band command-line tool installed separately.
+It is **not** a live DSP implementation in the Android player.
+
+No GPL library sources or binaries are included in the Android build, no
+licence change has been made to the app, and GitHub Actions remains manual-only.
+
+Run: ./gradlew :app:assembleDebug :app:testDebugUnitTest
