@@ -20,6 +20,10 @@ class PlaybackController(context: Context, private val listener: Listener) {
         fun onTrackChanged()
         fun onPlaybackControlsChanged()
         fun onPositionChanged(positionMs: Long, durationMs: Long)
+        /** Intent is known before Media3 has necessarily updated currentPosition. */
+        fun onSeekRequested(targetMs: Long)
+        /** Media3 acknowledged a seek; may follow the request asynchronously. */
+        fun onSeekApplied(actualMs: Long)
         fun onLoopChanged()
         fun onPlaybackError(message: String)
         fun onSpeedChanged()
@@ -77,7 +81,7 @@ class PlaybackController(context: Context, private val listener: Listener) {
             if (loop != null && player.playWhenReady && player.playbackState != Player.STATE_ENDED) {
                 val corrected = loop.constrainSeek(position)
                 if (corrected != position) {
-                    player.seekTo(corrected)
+                    seekPlayer(corrected)
                     position = corrected
                 }
             }
@@ -103,6 +107,17 @@ class PlaybackController(context: Context, private val listener: Listener) {
             // buffering, pause and track end without requiring the 120ms ticker.
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 listener.onPlaybackControlsChanged()
+            }
+
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int
+            ) {
+                if (reason == Player.DISCONTINUITY_REASON_SEEK ||
+                    reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT) {
+                    listener.onSeekApplied(newPosition.positionMs)
+                }
             }
 
             override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
@@ -250,12 +265,12 @@ class PlaybackController(context: Context, private val listener: Listener) {
         // the periodic loop check; keep repeating A–B instead of advancing.
         val loop = activeLoop
         if (loop != null) {
-            player.seekTo(loop.startMs)
+            seekPlayer(loop.startMs)
             player.play()
         } else when (endMode) {
             EndMode.STOP -> Unit // STATE_ENDED already stops playback.
             EndMode.REPEAT -> {
-                player.seekTo(0L)
+                seekPlayer(0L)
                 player.play()
             }
             EndMode.NEXT -> {
@@ -271,7 +286,7 @@ class PlaybackController(context: Context, private val listener: Listener) {
             player.pause()
         } else {
             if (player.playbackState == Player.STATE_ENDED) {
-                player.seekTo(activeLoop?.startMs ?: 0L)
+                seekPlayer(activeLoop?.startMs ?: 0L)
             }
             player.play()
         }
@@ -283,8 +298,14 @@ class PlaybackController(context: Context, private val listener: Listener) {
             if (duration > 0L) it.coerceAtMost(duration) else it
         }
         val target = activeLoop?.constrainSeek(bounded) ?: bounded
-        player.seekTo(target)
+        seekPlayer(target)
         listener.onPositionChanged(target, duration)
+    }
+
+    /** All explicit seeks announce their intended destination before Media3 sees it. */
+    private fun seekPlayer(targetMs: Long) {
+        listener.onSeekRequested(targetMs)
+        player.seekTo(targetMs)
     }
 
     fun skipBy(deltaMs: Long) = seekTo(currentPosition + deltaMs)
