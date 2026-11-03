@@ -33,14 +33,16 @@ class MainActivity : Activity() {
     private lateinit var pages: List<View>
     private val prefs by lazy { getSharedPreferences("library", MODE_PRIVATE) }
     private val libraryRepository by lazy { LibraryRepository(this) }
-    private val bpmCoordinator by lazy {
-        BpmCoordinator(this) {
-            if (::playerScreen.isInitialized) playerScreen.refreshBpm()
-            if (::libraryScreen.isInitialized) {
-                val selected = bpmCoordinator.track
-                if (selected != null) {
-                    libraryScreen.updateOneBpm(selected, bpmCoordinator.resolved())
-                }
+    private val bpmCoordinator: BpmCoordinator by lazy {
+        BpmCoordinator(this, ::onBpmChanged)
+    }
+
+    private fun onBpmChanged() {
+        if (::playerScreen.isInitialized) playerScreen.refreshBpm()
+        if (::libraryScreen.isInitialized) {
+            val selected = bpmCoordinator.track
+            if (selected != null) {
+                libraryScreen.updateOneBpm(selected, bpmCoordinator.resolved())
             }
         }
     }
