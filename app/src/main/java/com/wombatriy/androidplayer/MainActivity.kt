@@ -106,6 +106,10 @@ class MainActivity : Activity() {
             override fun onPlaybackControlsChanged() = playerScreen.updatePlaybackState()
             override fun onPositionChanged(positionMs: Long, durationMs: Long) =
                 playerScreen.updatePosition(positionMs, durationMs)
+            override fun onSeekRequested(targetMs: Long) =
+                playerScreen.onSeekRequested(targetMs)
+            override fun onSeekApplied(actualMs: Long) =
+                playerScreen.onSeekApplied(actualMs)
             override fun onLoopChanged() = playerScreen.updateLoop()
             override fun onPlaybackError(message: String) = playerScreen.showPlaybackError(message)
             override fun onSpeedChanged() = playerScreen.refreshSpeed()
