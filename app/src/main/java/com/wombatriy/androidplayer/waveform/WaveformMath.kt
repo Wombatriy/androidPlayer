@@ -111,6 +111,11 @@ object WaveformMath {
         )
     }
 
+    /** A tile is usable only while it contains the ENTIRE visible timeline. */
+    fun tileCovers(viewport: Window, tile: Window): Boolean =
+        viewport.lengthMs > 0L && tile.lengthMs > 0L &&
+            viewport.startMs >= tile.startMs && viewport.endMs <= tile.endMs
+
     /**
      * A moving waveform must reuse its already-rasterized bitmap for many
      * consecutive frames. Request a fresh tile only near the
