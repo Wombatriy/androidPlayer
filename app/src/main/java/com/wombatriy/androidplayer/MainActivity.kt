@@ -288,12 +288,8 @@ class MainActivity : Activity() {
                 Toast.LENGTH_SHORT).show()
             return
         }
-        // Avoid changing the URI of a file still held by ExoPlayer.
-        if (playback.currentTrack?.uri == track.uri) {
-            Toast.makeText(this, "Choose another track before renaming the loaded one",
-                Toast.LENGTH_LONG).show()
-            return
-        }
+        // The current track is supported: RenameFlow will suspend it only
+        // after the user confirms, then restart it using the renamed URI.
         val folder = prefs.getString(KEY_TREE_URI, null)?.let(Uri::parse) ?: return
         renameFlow.start(track, folder, libraryScreen.tracksSnapshot())
     }
