@@ -43,7 +43,9 @@ class BpmCoordinator(context: Context, private val onChanged: () -> Unit) {
     fun hasManual(): Boolean = track?.let(store::hasManual) ?: false
 
     fun selectTrack(next: Track?) {
-        if (track?.uri == next?.uri) return
+        // SAF rename can keep the URI unchanged while changing the display name.
+        // Compare the full Track so filename BPM refreshes after that rename.
+        if (track == next) return
         generation.incrementAndGet()
         stopTapSession()
         track = next
