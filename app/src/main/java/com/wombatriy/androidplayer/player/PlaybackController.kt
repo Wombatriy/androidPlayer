@@ -5,6 +5,9 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -15,7 +18,7 @@ import com.wombatriy.androidplayer.Track
  * Single owner of ExoPlayer, navigation and A–B loop.
  * At track end: Stop / Next / Repeat. A–B looping overrides the end mode.
  */
-class PlaybackController(context: Context, private val listener: Listener) {
+class PlaybackController(context: Context) {
     interface Listener {
         fun onTrackChanged()
         fun onPlaybackControlsChanged()
@@ -30,8 +33,40 @@ class PlaybackController(context: Context, private val listener: Listener) {
         fun onQueueChanged()
     }
 
+    /**
+     * The MediaSessionService owns this model. Activity listeners may come and
+     * go without releasing the audio engine or retaining the old Activity.
+     */
+    private val listeners = LinkedHashSet<Listener>()
+
+    fun addListener(listener: Listener) {
+        listeners.add(listener)
+    }
+
+    fun removeListener(listener: Listener) {
+        listeners.remove(listener)
+    }
+
+    private fun notifyListeners(event: (Listener) -> Unit) {
+        listeners.toList().forEach(event)
+    }
+
     private val prefs = context.getSharedPreferences("playback", Context.MODE_PRIVATE)
-    private val player = ExoPlayer.Builder(context).build()
+    private val player = ExoPlayer.Builder(context).build().apply {
+        // The service, not an Activity, handles music focus, noisy unplug
+        // events, and CPU wake locks during background playback.
+        setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                .build(),
+            true
+        )
+        setHandleAudioBecomingNoisy(true)
+        setWakeMode(C.WAKE_MODE_LOCAL)
+    }
+    /** Exposed only to the MediaSessionService's forwarding session player. */
+    val sessionPlayer: Player get() = player
     private val queue = PlaybackQueue<Track>()
     private val handler = Handler(Looper.getMainLooper())
     var activePlaylistId: String? = null
@@ -86,27 +121,32 @@ class PlaybackController(context: Context, private val listener: Listener) {
                 }
             }
             val now = SystemClock.elapsedRealtime()
-            if (loop == null || now - lastUiTick >= 110L) {
-                listener.onPositionChanged(position, duration)
+            if (listeners.isNotEmpty() &&
+                (loop == null || now - lastUiTick >= 110L)) {
+                notifyListeners { it.onPositionChanged(position, duration) }
                 lastUiTick = now
             }
-            // Keep the UI at ~8fps, but check active A–B boundaries more
-            // frequently to reduce audible overshoot without redrawing more.
-            handler.postDelayed(this,
-                if (loop != null && player.playWhenReady) 25L else 120L)
+            // Check A–B boundaries quickly, even with no Activity attached.
+            // Otherwise a detached service only needs a quiet 1Hz heartbeat;
+            // track endings are handled by Player.Listener, not the ticker.
+            handler.postDelayed(this, when {
+                loop != null && player.playWhenReady -> 25L
+                listeners.isNotEmpty() -> 120L
+                else -> 1_000L
+            })
         }
     }
 
     init {
         player.addListener(object : Player.Listener {
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-                listener.onPlaybackControlsChanged()
+                notifyListeners { it.onPlaybackControlsChanged() }
             }
 
             // Resumes the waveform clock after buffering and stops it during
             // buffering, pause and track end without requiring the 120ms ticker.
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                listener.onPlaybackControlsChanged()
+                notifyListeners { it.onPlaybackControlsChanged() }
             }
 
             override fun onPositionDiscontinuity(
@@ -116,13 +156,13 @@ class PlaybackController(context: Context, private val listener: Listener) {
             ) {
                 if (reason == Player.DISCONTINUITY_REASON_SEEK ||
                     reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT) {
-                    listener.onSeekApplied(newPosition.positionMs)
+                    notifyListeners { it.onSeekApplied(newPosition.positionMs) }
                 }
             }
 
             override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
                 // Reflect Media3's accepted playback speed in the UI.
-                listener.onSpeedChanged()
+                notifyListeners { it.onSpeedChanged() }
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -130,8 +170,8 @@ class PlaybackController(context: Context, private val listener: Listener) {
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                listener.onPlaybackError(error.localizedMessage ?: "Playback failed")
-                listener.onPlaybackControlsChanged()
+                notifyListeners { it.onPlaybackError(error.localizedMessage ?: "Playback failed") }
+                notifyListeners { it.onPlaybackControlsChanged() }
             }
         })
         handler.post(ticker)
@@ -156,9 +196,9 @@ class PlaybackController(context: Context, private val listener: Listener) {
         queue.select(track, sourceTracks)
         activePlaylistId = playlistId
         queueSourceLabel = if (playlistId == null) "All Tracks" else sourceName
-        listener.onQueueChanged()
+        notifyListeners { it.onQueueChanged() }
         if (alreadyPlaying) {
-            listener.onPlaybackControlsChanged()
+            notifyListeners { it.onPlaybackControlsChanged() }
         } else {
             playTrack(track)
         }
@@ -168,13 +208,21 @@ class PlaybackController(context: Context, private val listener: Listener) {
         currentTrack = track
         pointA = null
         pointB = null
-        player.setMediaItem(MediaItem.fromUri(track.uri))
+        player.setMediaItem(
+            MediaItem.Builder()
+                .setUri(track.uri)
+                .setMediaId(track.uri.toString())
+                .setMediaMetadata(
+                    MediaMetadata.Builder().setTitle(track.name).build()
+                )
+                .build()
+        )
         player.prepare()
         player.play()
-        listener.onTrackChanged()
-        listener.onQueueChanged()
-        listener.onLoopChanged()
-        listener.onPlaybackControlsChanged()
+        notifyListeners { it.onTrackChanged() }
+        notifyListeners { it.onQueueChanged() }
+        notifyListeners { it.onLoopChanged() }
+        notifyListeners { it.onPlaybackControlsChanged() }
     }
 
     /**
@@ -187,7 +235,7 @@ class PlaybackController(context: Context, private val listener: Listener) {
         player.pause()
         player.stop()
         player.clearMediaItems()
-        listener.onPlaybackControlsChanged()
+        notifyListeners { it.onPlaybackControlsChanged() }
         return true
     }
 
@@ -195,8 +243,8 @@ class PlaybackController(context: Context, private val listener: Listener) {
     fun updateLibraryOrder(tracks: List<Track>) {
         if (activePlaylistId != null) return
         queue.updateOrder(tracks) { a, b -> a.uri == b.uri }
-        listener.onQueueChanged()
-        listener.onPlaybackControlsChanged()
+        notifyListeners { it.onQueueChanged() }
+        notifyListeners { it.onPlaybackControlsChanged() }
     }
 
     /**
@@ -212,8 +260,8 @@ class PlaybackController(context: Context, private val listener: Listener) {
             listOf(selected) + tracks.filterNot { it.uri == selected.uri }
         } else tracks
         queue.updateOrder(ordered) { a, b -> a.uri == b.uri }
-        listener.onQueueChanged()
-        listener.onPlaybackControlsChanged()
+        notifyListeners { it.onQueueChanged() }
+        notifyListeners { it.onPlaybackControlsChanged() }
     }
 
     fun onPlaylistDeleted(playlistId: String, library: List<Track>) {
@@ -228,7 +276,7 @@ class PlaybackController(context: Context, private val listener: Listener) {
         queue.replaceReference(previous, replacement)
         if (restart && currentTrack?.uri == previous.uri) {
             playTrack(replacement)
-        } else listener.onQueueChanged()
+        } else notifyListeners { it.onQueueChanged() }
     }
 
     /** Restore the original URI if the SAF provider rejected the rename. */
@@ -257,7 +305,7 @@ class PlaybackController(context: Context, private val listener: Listener) {
         if (endMode == mode) return
         endMode = mode
         prefs.edit().putString(KEY_END_MODE, mode.name).apply()
-        listener.onPlaybackControlsChanged()
+        notifyListeners { it.onPlaybackControlsChanged() }
     }
 
     private fun onTrackEnded() {
@@ -278,7 +326,7 @@ class PlaybackController(context: Context, private val listener: Listener) {
                 if (next != null) playTrack(next)
             }
         }
-        listener.onPlaybackControlsChanged()
+        notifyListeners { it.onPlaybackControlsChanged() }
     }
 
     fun togglePlayPause() {
@@ -290,7 +338,7 @@ class PlaybackController(context: Context, private val listener: Listener) {
             }
             player.play()
         }
-        listener.onPlaybackControlsChanged()
+        notifyListeners { it.onPlaybackControlsChanged() }
     }
 
     fun seekTo(requestedMs: Long) {
@@ -299,12 +347,12 @@ class PlaybackController(context: Context, private val listener: Listener) {
         }
         val target = activeLoop?.constrainSeek(bounded) ?: bounded
         seekPlayer(target)
-        listener.onPositionChanged(target, duration)
+        notifyListeners { it.onPositionChanged(target, duration) }
     }
 
     /** All explicit seeks announce their intended destination before Media3 sees it. */
     private fun seekPlayer(targetMs: Long) {
-        listener.onSeekRequested(targetMs)
+        notifyListeners { it.onSeekRequested(targetMs) }
         player.seekTo(targetMs)
     }
 
@@ -315,13 +363,13 @@ class PlaybackController(context: Context, private val listener: Listener) {
 
     fun setAAt(ms: Long) {
         pointA = clampToTrack(ms)
-        listener.onLoopChanged()
+        notifyListeners { it.onLoopChanged() }
         normalizeCurrentPosition()
     }
 
     fun setBAt(ms: Long) {
         pointB = clampToTrack(ms)
-        listener.onLoopChanged()
+        notifyListeners { it.onLoopChanged() }
         normalizeCurrentPosition()
     }
 
@@ -333,7 +381,7 @@ class PlaybackController(context: Context, private val listener: Listener) {
     fun clearLoop() {
         pointA = null
         pointB = null
-        listener.onLoopChanged()
+        notifyListeners { it.onLoopChanged() }
     }
 
     private fun normalizeCurrentPosition() {
@@ -345,7 +393,7 @@ class PlaybackController(context: Context, private val listener: Listener) {
     fun setSpeed(value: Float) {
         require(value in 0.25f..1.50f)
         player.setPlaybackSpeed(value)
-        listener.onSpeedChanged()
+        notifyListeners { it.onSpeedChanged() }
     }
 
     fun release() {
