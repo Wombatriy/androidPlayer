@@ -524,6 +524,29 @@ slowly, then try changing speed and A–B loop. The background waveform
 calculation should not freeze the rest of the Player UI. If it still does,
 capture the `WaveformPerf` Logcat lines and the Android frame timeline.
 
+### Green played-section shimmer — overlapping-alpha fix
+
+The first flicker fix kept peaks visible during fast scrubs and removed
+per-frame tint filters, but the played section still shimmered on some phones.
+Inspecting the renderer revealed a compositing problem: the entire waveform
+was first drawn in muted color, **then the already-played area was drawn
+again in green**. Both bitmaps have antialiased, partially transparent edges.
+As the wave slides by fractional screen pixels, the overlapping strokes'
+alpha blending changes perceived brightness and can make the green region
+pulse.
+
+The bitmap and fast-scrub fallback now use **two disjoint clipped regions**:
+green peaks exclusively from the left edge through the playhead, muted
+peaks exclusively from the playhead to the right edge. The green bitmap
+is never drawn over gray waveform strokes. No additional rendering passes
+or audio decoding were introduced; speed/seek/loop and 30fps animation are
+unchanged. Tests assert a common, smoothly moving clip boundary.
+
+**Device check:** Play a previously cached track and watch the green
+section for 20–30 seconds, then move the full-track slider quickly and
+check both colors as the fallback and ready bitmap switch. Neither green
+region brightness nor peak shape should pulse periodically.
+
 ### Played-color flicker and fast-scrubbing visibility
 
 **Waveform data and progress text now use independent callbacks.** The

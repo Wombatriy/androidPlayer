@@ -144,6 +144,8 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [x] Ignore old Media3 position samples for a short bounded interval during seek settlement; do not snap on tiny SEEK_ADJUSTMENT events
 - [x] Regression tests for seek-settling grace period, repeated seeks, stale Play/Pause position and tempo transitions
 - [x] Offload waveform rasterization to a dedicated low-priority worker; both played/muted colors are prepared in the bitmap rather than GPU-tinted each frame
+- [x] Eliminate green shimmer from alpha overdraw: clip the **played** and **upcoming** waveform into two strictly nonoverlapping regions in both bitmap and scrub fallback rendering
+- [x] Add regression tests for continuous played/unplayed color split and offscreen playhead clamping
 - [x] Never blank a waveform during rapid SeekBar/waveform dragging: show a bounded batched-line preview while the target bitmap is unavailable
 - [x] Suppress costly tile rebuild churn during dragging; request the final background tile after finger release, and reject stale tiles that no longer cover the viewport
 - [x] Separate decode progress/status callbacks from waveform data so progress text cannot repeatedly reset preview tiles
