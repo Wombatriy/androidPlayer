@@ -462,8 +462,18 @@ class WaveformView(
                 tracking = false
                 dragging = false
                 if (wasDragging || tap && !longHold) {
-                    positionMs = result
                     onSeek(result)
+                    // A direct touch seek is a real discontinuity, even when
+                    // it is shorter than the 260ms clock-jitter tolerance.
+                    // Re-anchor to ExoPlayer's *constrained* position (A/B
+                    // loops may reject the requested time).
+                    val now = SystemClock.elapsedRealtimeNanos()
+                    val actual = playbackPosition().coerceAtLeast(0L)
+                    smoothClock.sync(
+                        actual, now, playbackSpeed(), playbackRunning(),
+                        durationMs, force = true
+                    )
+                    positionMs = actual
                     if (tap) performClick()
                 }
                 invalidate()
