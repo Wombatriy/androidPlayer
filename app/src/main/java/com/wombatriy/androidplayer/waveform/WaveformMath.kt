@@ -122,6 +122,34 @@ object WaveformMath {
         return playheadX.coerceIn(leftPx, rightPx)
     }
 
+    /**
+     * Opaque, gap-free waveform column from cached 50ms peaks.
+     *
+     * Thin antialiased lines separated by subpixel gaps shimmer when Android
+     * translates a bitmap at fractional X coordinates. A filled vertical
+     * envelope avoids those high-frequency gaps. Sample the MAX peak of all
+     * audio bins touching the requested destination pixel (not just its
+     * center) so narrow transients are not lost.
+     *
+     * This pure helper is shared by background bitmap rasterization and
+     * the immediate fast-scrub fallback, keeping their shapes consistent.
+     */
+    fun peakForPixel(
+        levels: ByteArray,
+        startMs: Double,
+        endMs: Double
+    ): Int {
+        if (levels.isEmpty() || !startMs.isFinite() || !endMs.isFinite() ||
+            endMs <= startMs) return 0
+        val first = (startMs.coerceAtLeast(0.0) / BIN_DURATION_MS)
+            .toInt().coerceIn(0, levels.lastIndex)
+        val last = ((endMs - 0.000001).coerceAtLeast(0.0) / BIN_DURATION_MS)
+            .toInt().coerceIn(first, levels.lastIndex)
+        var peak = 0
+        for (i in first..last) peak = maxOf(peak, levels[i].toInt() and 255)
+        return peak
+    }
+
     /** A tile is usable only while it contains the ENTIRE visible timeline. */
     fun tileCovers(viewport: Window, tile: Window): Boolean =
         viewport.lengthMs > 0L && tile.lengthMs > 0L &&
