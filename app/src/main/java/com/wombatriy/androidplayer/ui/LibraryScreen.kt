@@ -209,7 +209,7 @@ class LibraryScreen(
             // Fallback to filename metadata while the background snapshot loads.
             val record = bpmValues[track.uri.toString()]
                 ?: track.filenameBpm?.let { BpmRecord(it.toDouble(), BpmSource.FILENAME) }
-            holder.bpm.visibility = if (record == null) GONE else VISIBLE
+            holder.bpm.visibility = if (record == null) View.GONE else View.VISIBLE
             if (record != null) {
                 val prefix = when (record.source) {
                     BpmSource.FILENAME -> "F"
