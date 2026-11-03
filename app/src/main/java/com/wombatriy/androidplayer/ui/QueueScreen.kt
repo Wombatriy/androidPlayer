@@ -23,6 +23,9 @@ class QueueScreen(
 ) :
     LinearLayout(context) {
 
+    // ListView.setAdapter() immediately calls getCount(); initialize the
+    // backing list before constructing the adapter or attaching it to a view.
+    private var tracks: List<Track> = emptyList()
     private val description = context.textLine("No active queue", 15f)
     private val adapter = QueueAdapter()
     private val list = ListView(context).apply {
@@ -30,7 +33,6 @@ class QueueScreen(
         adapter = this@QueueScreen.adapter
         setOnItemClickListener { _, _, index, _ -> onChooseTrack(index) }
     }
-    private var tracks: List<Track> = emptyList()
 
     init {
         orientation = VERTICAL
