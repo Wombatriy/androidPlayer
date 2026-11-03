@@ -329,3 +329,56 @@ No GitHub Actions jobs have been started automatically for this change.
 - A future gesture UX task: swipe left/right between Player, Library,
   Playlists, and Queue, carefully avoiding conflicts with dragging the
   seekbar, the speed slider and vertical library scrolling.
+
+## Iteration 06 — saved playlists and their playback queue
+
+**Playlists** is now a working tab, not a placeholder. You can create, rename,
+delete and select playlists. Each playlist stores a **name, stable ID and
+an ordered list of SAF URI references** in app-private SharedPreferences.
+The underlying music stays in place: no copying, moving or deleting audio
+when changing a playlist. Items are saved in the **order you add or move
+them**, never alphabetically or by BPM.
+
+### Everyday workflow
+1. Open **Playlists → + New** and name the playlist, e.g. `Jazz practice`.
+2. In **Library**, long-press a track to open a choice between **Add to playlist**
+   and **Rename with BPM**. Choose the desired playlist; duplicate additions
+   are ignored. If no playlist exists, you can create one while adding.
+3. In **Playlists**, choose a playlist from the dropdown and tap a track.
+   Music starts without changing tabs.
+4. **Queue** shows the source and exact playback order. Previous/Next and
+   Stop/Next/Repeat follow that source, stopping at the end rather than wrapping.
+   Tap any Queue row to jump to that track without changing playlist context.
+5. Long-press a Playlists track for **Play / Move up / Move down / Remove**.
+   Removal affects the playlist reference only. Playlists persist after app
+   restarts; the view's selection lives for the current Activity session.
+
+**All Tracks** remains the virtual Library playlist, with numeric BPM sorting.
+Changing BPM/order in Library does not rearrange a user playlist. Tapping a
+song already playing does not restart it; selecting that song from another
+source can change the queue context without interrupting the audio.
+
+The UI displays **Unavailable** for URI references that are no longer part
+of the selected music folder or otherwise not found in the Library cache.
+These items can still be moved or removed but are skipped by playlist playback.
+Use Library → Rescan if a file has been added/removed. A SAF file rename through
+this app updates matching references across all playlists and the active
+playback queue, preserving their positions.
+
+### Real-device checks
+1. Create two playlists and add files in deliberately non-BPM order.
+2. Play a middle song in playlist A; Next/Previous and end mode Next must
+   remain within A. Queue should display A and the correct selected row.
+3. Switch to playlist B, play another song; Queue changes to B.
+4. Play the same song in Library; Queue should become All Tracks without
+   resetting a currently playing song.
+5. Move, remove, rename and delete playlists; ensure edits do not delete
+   original media files and changing order does not restart playback.
+6. Fully restart the app: saved playlists, names and track order should
+   remain. Select another folder and verify old entries show Unavailable.
+7. Rename a track using SAF; confirm all playlist URI references are updated.
+8. Check that a large Library and long playlists retain responsive scrolling.
+
+Full background playback, Android Back navigation, drag-and-drop Queue
+reordering and lock-screen controls remain on the later roadmap.
+GitHub Actions is still **manual-only**, to avoid build notification spam.

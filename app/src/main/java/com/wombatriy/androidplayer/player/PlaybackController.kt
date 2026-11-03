@@ -22,12 +22,17 @@ class PlaybackController(context: Context, private val listener: Listener) {
         fun onLoopChanged()
         fun onPlaybackError(message: String)
         fun onSpeedChanged()
+        fun onQueueChanged()
     }
 
     private val prefs = context.getSharedPreferences("playback", Context.MODE_PRIVATE)
     private val player = ExoPlayer.Builder(context).build()
     private val queue = PlaybackQueue<Track>()
     private val handler = Handler(Looper.getMainLooper())
+    var activePlaylistId: String? = null
+        private set
+    var queueSourceLabel: String = "All Tracks"
+        private set
     private var released = false
 
     var currentTrack: Track? = null
@@ -46,6 +51,7 @@ class PlaybackController(context: Context, private val listener: Listener) {
     val hasNext: Boolean get() = queue.hasNext
     val queuePosition: Int get() = queue.position
     val queueSize: Int get() = queue.size
+    fun queueSnapshot(): List<Track> = queue.snapshot()
     val speed: Float get() = player.playbackParameters.speed
     val currentPosition: Long get() = player.currentPosition.coerceAtLeast(0L)
     val duration: Long get() = player.duration.takeIf { it > 0L } ?: 0L
@@ -100,18 +106,30 @@ class PlaybackController(context: Context, private val listener: Listener) {
     }
 
     /**
-     * The Library's current BPM order acts as the virtual All Tracks queue.
-     * Playlist-based queues will reuse this controller in a later iteration.
+     * Starts from the supplied source order, without ever sorting a playlist.
+     * Switching the queue source on the currently playing file does not
+     * restart playback or clear A–B markers.
      */
-    fun load(track: Track, libraryTracks: List<Track>) {
-        // A second tap on an already loaded item must not reset seek/loop state.
-        // Once a track has ended, selecting it is allowed to restart it.
-        if (currentTrack?.uri == track.uri &&
-            player.mediaItemCount > 0 && player.playbackState != Player.STATE_ENDED) {
-            return
+    fun load(
+        track: Track,
+        sourceTracks: List<Track>,
+        playlistId: String? = null,
+        sourceName: String = "All Tracks"
+    ) {
+        val alreadyPlaying = currentTrack?.uri == track.uri &&
+            player.mediaItemCount > 0 && player.playbackState != Player.STATE_ENDED
+        val sourceChanged = activePlaylistId != playlistId
+        if (alreadyPlaying && !sourceChanged) return
+
+        queue.select(track, sourceTracks)
+        activePlaylistId = playlistId
+        queueSourceLabel = if (playlistId == null) "All Tracks" else sourceName
+        listener.onQueueChanged()
+        if (alreadyPlaying) {
+            listener.onPlaybackControlsChanged()
+        } else {
+            playTrack(track)
         }
-        queue.select(track, libraryTracks)
-        playTrack(track)
     }
 
     private fun playTrack(track: Track) {
@@ -122,6 +140,7 @@ class PlaybackController(context: Context, private val listener: Listener) {
         player.prepare()
         player.play()
         listener.onTrackChanged()
+        listener.onQueueChanged()
         listener.onLoopChanged()
         listener.onPlaybackControlsChanged()
     }
@@ -140,10 +159,36 @@ class PlaybackController(context: Context, private val listener: Listener) {
         return true
     }
 
-    /** Keep Next/Previous in sync with newly detected BPM sorting. */
+    /** BPM resorting only affects the virtual All Tracks queue. */
     fun updateLibraryOrder(tracks: List<Track>) {
+        if (activePlaylistId != null) return
         queue.updateOrder(tracks) { a, b -> a.uri == b.uri }
+        listener.onQueueChanged()
         listener.onPlaybackControlsChanged()
+    }
+
+    /**
+     * Changes to the currently active playlist are applied without resetting
+     * playback. If the current song was removed, keep it until it finishes,
+     * then continue with the remaining playable playlist entries.
+     */
+    fun updatePlaylistOrder(playlistId: String, name: String, tracks: List<Track>) {
+        if (activePlaylistId != playlistId) return
+        queueSourceLabel = name
+        val selected = currentTrack
+        val ordered = if (selected != null && tracks.none { it.uri == selected.uri }) {
+            listOf(selected) + tracks.filterNot { it.uri == selected.uri }
+        } else tracks
+        queue.updateOrder(ordered) { a, b -> a.uri == b.uri }
+        listener.onQueueChanged()
+        listener.onPlaybackControlsChanged()
+    }
+
+    fun onPlaylistDeleted(playlistId: String, library: List<Track>) {
+        if (activePlaylistId != playlistId) return
+        activePlaylistId = null
+        queueSourceLabel = "All Tracks"
+        updateLibraryOrder(library)
     }
 
     /** Update the queue's URI; restart the renamed current track from 00:00. */
@@ -151,12 +196,21 @@ class PlaybackController(context: Context, private val listener: Listener) {
         queue.replaceReference(previous, replacement)
         if (restart && currentTrack?.uri == previous.uri) {
             playTrack(replacement)
-        }
+        } else listener.onQueueChanged()
     }
 
     /** Restore the original URI if the SAF provider rejected the rename. */
     fun restoreAfterFailedRename(previous: Track, restart: Boolean) {
         if (restart && currentTrack?.uri == previous.uri) playTrack(previous)
+    }
+
+    /** Tap a Queue row without losing its playlist context. */
+    fun playQueueIndex(index: Int) {
+        val selected = queue.snapshot().getOrNull(index) ?: return
+        if (selected.uri == currentTrack?.uri &&
+            player.mediaItemCount > 0 && player.playbackState != Player.STATE_ENDED) return
+        queue.selectAt(index)
+        playTrack(selected)
     }
 
     fun next() {

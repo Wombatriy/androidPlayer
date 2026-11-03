@@ -1,6 +1,7 @@
 package com.wombatriy.androidplayer
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
@@ -16,9 +17,12 @@ import android.widget.Toast
 import com.wombatriy.androidplayer.bpm.BpmCoordinator
 import com.wombatriy.androidplayer.bpm.BpmBatchAnalyzer
 import com.wombatriy.androidplayer.library.LibraryRepository
+import com.wombatriy.androidplayer.playlists.PlaylistCoordinator
 import com.wombatriy.androidplayer.player.PlaybackController
 import com.wombatriy.androidplayer.ui.LibraryScreen
 import com.wombatriy.androidplayer.ui.PlayerScreen
+import com.wombatriy.androidplayer.ui.PlaylistsScreen
+import com.wombatriy.androidplayer.ui.QueueScreen
 import com.wombatriy.androidplayer.ui.RenameFlow
 import kotlin.math.roundToInt
 
@@ -30,7 +34,10 @@ class MainActivity : Activity() {
     private lateinit var playback: PlaybackController
     private lateinit var playerScreen: PlayerScreen
     private lateinit var libraryScreen: LibraryScreen
+    private lateinit var playlistsScreen: PlaylistsScreen
+    private lateinit var queueScreen: QueueScreen
     private lateinit var status: TextView
+    private val playlists: PlaylistCoordinator by lazy { PlaylistCoordinator(this, playback) }
     private lateinit var pages: List<View>
     private val prefs by lazy { getSharedPreferences("library", MODE_PRIVATE) }
     private val libraryRepository by lazy { LibraryRepository(this) }
@@ -39,9 +46,11 @@ class MainActivity : Activity() {
             activity = this,
             onBeforeCommit = { track -> playback.suspendForRename(track) },
             onRenamed = { previous, result, restart ->
-                playback.onLibraryTrackRenamed(previous, result.replacement, restart)
+                // Keep all playlist references valid even if SAF returns a new URI.
+                playlists.onTrackRenamed(previous, result.replacement, result.tracks, restart)
                 libraryScreen.submitTracks(result.tracks)
                 batchAnalyzer.refreshSources(result.tracks)
+                playlistsScreen.refresh()
                 loadedFromCache = result.cacheSaved
                 updateStatus()
             },
@@ -97,6 +106,9 @@ class MainActivity : Activity() {
             override fun onLoopChanged() = playerScreen.updateLoop()
             override fun onPlaybackError(message: String) = playerScreen.showPlaybackError(message)
             override fun onSpeedChanged() = playerScreen.refreshSpeed()
+            override fun onQueueChanged() {
+                if (::queueScreen.isInitialized) queueScreen.refresh()
+            }
         })
         createLayout()
         if (savedInstanceState != null) {
@@ -147,15 +159,24 @@ class MainActivity : Activity() {
             onRescan = ::rescanSelectedFolder,
             onBatchToggle = ::toggleBatchAnalysis,
             onTrackSelected = ::playTrack,
-            onTrackLongPressed = ::previewRename,
-            onOrderChanged = { sorted -> playback.updateLibraryOrder(sorted) }
+            onTrackLongPressed = ::showLibraryTrackActions,
+            onOrderChanged = playlists::onLibraryOrder
         )
-        pages = listOf(
-            playerScreen,
-            libraryScreen,
-            placeholder("Playlists", "Playlist management will be added in a later iteration."),
-            placeholder("Queue", "Playlist track ordering will be added in a later iteration.")
+        playlistsScreen = PlaylistsScreen(
+            this,
+            store = playlists.store,
+            resolve = playlists::resolve,
+            onPlayTrack = { track, playlist, tracks ->
+                if (!renameFlow.busy) playlists.play(track, playlist, tracks)
+                else Toast.makeText(this, "Finish renaming first", Toast.LENGTH_SHORT).show()
+            },
+            onCatalogChanged = playlists::onPlaylistChanged
         )
+        queueScreen = QueueScreen(this, playback) { index ->
+            if (!renameFlow.busy) playback.playQueueIndex(index)
+            else Toast.makeText(this, "Finish renaming first", Toast.LENGTH_SHORT).show()
+        }
+        pages = listOf(playerScreen, libraryScreen, playlistsScreen, queueScreen)
         val host = FrameLayout(this)
         pages.forEach { page ->
             host.addView(page, FrameLayout.LayoutParams(-1, -1))
@@ -190,20 +211,6 @@ class MainActivity : Activity() {
         root.requestApplyInsets()
     }
 
-    private fun placeholder(heading: String, text: String): View =
-        LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(20), dp(16), 0)
-            addView(TextView(this@MainActivity).apply {
-                this.text = heading
-                textSize = 23f
-            })
-            addView(TextView(this@MainActivity).apply {
-                this.text = text
-                textSize = 15f
-            })
-        }
-
     private fun showTab(index: Int) {
         if (activeTab == 1 && index != 1) saveScrollPosition()
         activeTab = index.coerceIn(0, pages.lastIndex)
@@ -221,6 +228,22 @@ class MainActivity : Activity() {
         }
         // Stay on the initiating tab. Tapping the already selected track is a no-op.
         playback.load(track, libraryScreen.tracksSnapshot())
+    }
+
+    private fun showLibraryTrackActions(track: Track) {
+        if (renameFlow.busy) {
+            Toast.makeText(this, "Finish renaming first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle(track.name)
+            .setItems(arrayOf("Add to playlist", "Rename with BPM")) { _, action ->
+                when (action) {
+                    0 -> playlistsScreen.addTrack(track)
+                    1 -> previewRename(track)
+                }
+            }
+            .show()
     }
 
     private fun chooseFolder() {
@@ -320,7 +343,9 @@ class MainActivity : Activity() {
             loadingFolder = false
             result.onSuccess { snapshot ->
                 loadedFromCache = snapshot.fromCache
+                playlists.onLibraryLoaded(snapshot.tracks)
                 libraryScreen.submitTracks(snapshot.tracks)
+                playlistsScreen.refresh()
                 batchAnalyzer.refreshSources(snapshot.tracks)
                 libraryScreen.updateBatchState(batchAnalyzer.state)
             }.onFailure { error ->

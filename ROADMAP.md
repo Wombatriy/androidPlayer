@@ -100,19 +100,28 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [ ] Verify Android SAF rename on real storage providers and check cache/BPM across a full app restart
 - [ ] Later: bulk rename preview/confirm when a reliable batch workflow is needed
 
-## 06 — Playlists (ordered reference lists, not copies of audio files)
-- [ ] Treat Library as a virtual "All Tracks" playlist; share playback-queue interfaces with user playlists
-- [ ] Store each user playlist as a small locally cached ordered list of SAF content URIs
-- [ ] Preserve insertion and explicitly chosen order; **never alphabetically sort playlists**
-- [ ] Create/rename/delete lists and add/remove tracks from the Library's context menu
-- [ ] Restore playlists after relaunch and gracefully handle moved, deleted or inaccessible files
-- [ ] Keep audio files in their original directories; playlist changes must never move them
+## 06 — User playlists and playlist playback (PR #9)
+- [x] Library remains the virtual **All Tracks** playlist, sorted by BPM; custom playlists use explicit URI order
+- [x] Store each user playlist as an app-private list of SAF content URI strings, without duplicating audio files
+- [x] Create, rename, delete, select and persist multiple playlists
+- [x] Long-press a Library track → **Add to playlist** or **Rename with BPM**
+- [x] Add/remove tracks without duplicates, move items up/down and preserve insertion/manual order
+- [x] Play a track from a selected playlist and keep its ordering for Previous/Next and Stop/Next/Repeat
+- [x] Present the active source in Queue, with tap-to-play while preserving queue context
+- [x] Update all playlist URI references when SAF rename changes an audio file URI
+- [x] Show unavailable tracks after deletion/folder change, skip missing files during playback
+- [x] Reconcile live playlist changes without restarting the current track
+- [x] Separate PlaylistCatalog, PlaylistStore, PlaylistCoordinator, PlaylistsScreen and QueueScreen
+- [x] JVM tests for ordering, uniqueness, rename/delete, URI migration, and queue selection
+- [ ] Verify on a real phone, especially playlist persistence across process restarts and rename/missing-file handling
 
-## 07 — Queue
-- [ ] Gesture navigation: swipe left/right across non-interactive content to switch Player ↔ Library ↔ Playlists ↔ Queue; prevent conflicts with the seek slider and ListView scrolling
-- [ ] Fourth tab reflects selected playlist
-- [ ] Reorder with drag handles; select and play any item
-- [ ] Synchronize player controls and end-of-track modes with active queue
+## 07 — Advanced queue UX
+- [x] Fourth tab displays the active playback queue (All Tracks or the selected user playlist)
+- [x] Select and play any available queue item without losing source order
+- [x] Synchronize Previous/Next and end-of-track modes with the chosen playback source
+- [ ] Drag handles to reorder Queue, with appropriate persistence in a custom playlist
+- [ ] Gesture navigation: swipe left/right across non-interactive content to switch Player ↔ Library ↔ Playlists ↔ Queue; avoid conflicts with seekbars and ListView scrolling
+- [ ] Better source-aware history/navigation and jump-to-current-track behavior
 
 ## 08 — Waveform (deferred from 02E)
 - [ ] Asynchronously calculate and cache waveform preview

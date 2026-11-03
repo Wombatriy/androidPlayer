@@ -13,6 +13,7 @@ class PlaybackQueue<T> {
     val hasPrevious: Boolean get() = position > 0
     val hasNext: Boolean get() = position >= 0 && position < items.lastIndex
     val current: T? get() = items.getOrNull(position)
+    fun snapshot(): List<T> = items
 
     fun select(selected: T, source: List<T>) {
         val snapshot = source.toList()
@@ -48,6 +49,12 @@ class PlaybackQueue<T> {
         if (index < 0) return
         items = snapshot
         position = index
+    }
+
+    fun selectAt(index: Int): T? {
+        val chosen = items.getOrNull(index) ?: return null
+        position = index
+        return chosen
     }
 
     fun previous(): T? {

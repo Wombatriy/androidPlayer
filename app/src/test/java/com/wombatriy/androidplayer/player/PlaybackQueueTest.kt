@@ -63,6 +63,21 @@ class PlaybackQueueTest {
         assertEquals(3, q.size)
     }
 
+    @Test fun tappingQueueRowChangesSelectionWithoutResorting() {
+        val q = makeQueue()
+        assertEquals("three", q.selectAt(2))
+        assertEquals(2, q.position)
+        assertNull(q.next())
+        assertEquals("two", q.previous())
+    }
+
+    @Test fun selectingAnInvalidQueueIndexDoesNothing() {
+        val q = makeQueue()
+        assertNull(q.selectAt(-1))
+        assertNull(q.selectAt(42))
+        assertEquals("two", q.current)
+    }
+
     @Test fun selectingDoesNotMutateOriginalList() {
         val original = mutableListOf("one", "two")
         val q = PlaybackQueue<String>()
