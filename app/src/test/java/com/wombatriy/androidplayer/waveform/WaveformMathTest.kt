@@ -109,6 +109,59 @@ class WaveformMathTest {
         ).none())
     }
 
+    @Test fun solidEnvelopeColumnsPreserveQuietSectionsAndTransients() {
+        val bins = byteArrayOf(0, 10, 40, 100, 255.toByte(), 20)
+        assertEquals(0, WaveformMath.peakForPixel(bins, 0.0, 45.0))
+        assertEquals(10, WaveformMath.peakForPixel(bins, 50.0, 100.0))
+        // One destination pixel may cover two adjacent 50ms source bins:
+        // the quieter neighbour must not hide the high transient.
+        assertEquals(255, WaveformMath.peakForPixel(bins, 195.0, 205.0))
+        assertEquals(255, WaveformMath.peakForPixel(bins, 200.0, 250.0))
+        assertEquals(0, WaveformMath.peakForPixel(bins, Double.NaN, 100.0))
+        assertEquals(0, WaveformMath.peakForPixel(bins, 100.0, 100.0))
+    }
+
+    @Test fun rasterTilesUseSameAbsoluteSamplingPhaseAfterRebuild() {
+        val window1 = WaveformMath.Window(90_000L, 110_000L)
+        val window2 = WaveformMath.Window(91_000L, 111_000L)
+        val first = WaveformMath.rasterGrid(window1, 240_000L, 330)
+        val next = WaveformMath.rasterGrid(window2, 240_000L, 330)
+        assertEquals(660, first.pixelCount)
+        assertTrue(first.window.startMs <= 80_000L)
+        assertTrue(first.window.endMs >= 120_000L)
+        assertTrue(next.window.startMs <= 81_000L)
+        assertTrue(next.window.endMs >= 121_000L)
+
+        // An absolute source pixel appears in both tiles. Its source time
+        // is IDENTICAL, so replacing tiles cannot change peak aggregation.
+        val sharedPixel = maxOf(first.firstPixel, next.firstPixel) + 10L
+        assertTrue(sharedPixel < minOf(
+            first.firstPixel + first.pixelCount, next.firstPixel + next.pixelCount
+        ))
+        val periodMs = window1.lengthMs.toDouble() / 330
+        val firstTime = (first.firstPixel +
+            (sharedPixel - first.firstPixel)) * periodMs
+        val nextTime = (next.firstPixel +
+            (sharedPixel - next.firstPixel)) * periodMs
+        assertEquals(firstTime, nextTime, 0.000001)
+    }
+
+    @Test fun rasterGridStaysBoundedAtMediaEdges() {
+        val beginning = WaveformMath.rasterGrid(
+            WaveformMath.Window(0L, 20_000L), 240_000L, 330
+        )
+        assertEquals(0L, beginning.window.startMs)
+        assertTrue(beginning.pixelCount <= 662)
+        val ending = WaveformMath.rasterGrid(
+            WaveformMath.Window(220_000L, 240_000L), 240_000L, 330
+        )
+        assertEquals(240_000L, ending.window.endMs)
+        assertTrue(ending.pixelCount <= 662)
+        assertEquals(0, WaveformMath.rasterGrid(
+            WaveformMath.Window(0L, 0L), 0L, 330
+        ).pixelCount)
+    }
+
     @Test fun playedAndMutedRegionsMeetWithoutOverlap() {
         val left = 12f
         val right = 348f
