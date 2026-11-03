@@ -213,7 +213,14 @@ class WaveformView(
             }
             MotionEvent.ACTION_CANCEL -> {
                 removeCallbacks(longPressRunnable)
+                // Release marker-edit mode even if Android interrupts the drag,
+                // e.g. when a system gesture or dialog takes ownership.
+                val marker = grabbed
+                if (marker != null && dragged) {
+                    onMarkerChanged(marker, timeForX(event.x), true)
+                }
                 grabbed = null
+                dragged = false
                 return true
             }
         }
