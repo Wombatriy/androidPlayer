@@ -29,7 +29,8 @@ class WaveformTileRenderer(private val onReady: (Tile) -> Unit) {
         val viewWidth: Int,
         val viewHeight: Int,
         val groupSize: Int,
-        val bitmap: Bitmap
+        val mutedBitmap: Bitmap,
+        val playedBitmap: Bitmap
     )
 
     private data class Request(
@@ -122,16 +123,23 @@ class WaveformTileRenderer(private val onReady: (Tile) -> Unit) {
         val pixelsPerMs = request.viewWidth.toDouble() / request.windowMs
         val bitmapWidth = ceil(contentLength * pixelsPerMs)
             .toInt().coerceIn(1, request.viewWidth * 2 + 2)
-        val bitmap = Bitmap.createBitmap(
+        val mutedBitmap = Bitmap.createBitmap(
             bitmapWidth, request.viewHeight, Bitmap.Config.ARGB_8888
         )
-        val canvas = Canvas(bitmap)
+        val playedBitmap = Bitmap.createBitmap(
+            bitmapWidth, request.viewHeight, Bitmap.Config.ARGB_8888
+        )
+        val mutedCanvas = Canvas(mutedBitmap)
+        val playedCanvas = Canvas(playedBitmap)
         val stroke = max(1f,
             (WaveformMath.BIN_DURATION_MS * request.groupSize *
                 pixelsPerMs * 0.82).toFloat()
         )
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
+            // Rasterize the actual colors once in the worker. Applying
+            // PorterDuff color filters to a moving mask on every UI frame
+            // can exhibit uneven GPU blending/flicker on some devices.
+            color = Color.rgb(153, 184, 184)
             style = Paint.Style.STROKE
             strokeCap = Paint.Cap.ROUND
             strokeWidth = stroke
@@ -154,11 +162,15 @@ class WaveformTileRenderer(private val onReady: (Tile) -> Unit) {
                 WaveformMath.BIN_DURATION_MS
             val x = ((centerTime - request.startMs) * pixelsPerMs).toFloat()
             val half = max(1f, heightScale * peak / 255f)
-            canvas.drawLine(x, centerY - half, x, centerY + half, paint)
+            mutedCanvas.drawLine(x, centerY - half, x, centerY + half, paint)
+            paint.color = Color.rgb(0, 119, 116)
+            playedCanvas.drawLine(x, centerY - half, x, centerY + half, paint)
+            paint.color = Color.rgb(153, 184, 184)
         }
         return Tile(
             request.source, request.startMs, request.endMs, request.windowMs,
-            request.viewWidth, request.viewHeight, request.groupSize, bitmap
+            request.viewWidth, request.viewHeight, request.groupSize,
+            mutedBitmap, playedBitmap
         )
     }
 }
