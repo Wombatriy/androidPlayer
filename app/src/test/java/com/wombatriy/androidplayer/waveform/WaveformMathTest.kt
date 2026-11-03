@@ -109,6 +109,30 @@ class WaveformMathTest {
         ).none())
     }
 
+    @Test fun playedAndMutedRegionsMeetWithoutOverlap() {
+        val left = 12f
+        val right = 348f
+        val playheads = listOf(-100f, 12f, 24.25f, 184.5f, 347.9f, 348f, 900f)
+        for (playhead in playheads) {
+            val split = WaveformMath.progressSplitX(playhead, left, right)
+            assertTrue(split >= left && split <= right)
+            // Green is [left, split], muted is [split, right]; together
+            // they fill exactly the display without drawing either twice.
+            assertEquals(right - left, (split - left) + (right - split), 0.001f)
+        }
+    }
+
+    @Test fun playedColorBoundaryDoesNotJumpBetweenAdjacentFrames() {
+        val left = 12f
+        val right = 348f
+        val first = WaveformMath.progressSplitX(177.10f, left, right)
+        val next = WaveformMath.progressSplitX(177.35f, left, right)
+        assertEquals(0.25f, next - first, 0.001f)
+        assertEquals(left, WaveformMath.progressSplitX(-10f, left, right), 0f)
+        assertEquals(right, WaveformMath.progressSplitX(1_000f, left, right), 0f)
+        assertEquals(left, WaveformMath.progressSplitX(Float.NaN, left, right), 0f)
+    }
+
     @Test fun uncoveredTimelineMustNeverBeTreatedAsReadyTile() {
         val prepared = WaveformMath.Window(80_000L, 120_000L)
         assertTrue(WaveformMath.tileCovers(
