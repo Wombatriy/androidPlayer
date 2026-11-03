@@ -40,7 +40,12 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
     private val errorLabel = context.textLine()
     private val positionLabel = context.textLine("00:00 / 00:00")
     private val positionBar = SeekBar(context)
-    private val waveformView = WaveformView(context, onSeek = playback::seekTo)
+    private val waveformView = WaveformView(
+        context,
+        onSeek = playback::seekTo,
+        playbackPosition = { playback.currentPosition },
+        playbackRunning = { playback.isPlaying }
+    )
     private val waveformStatus = context.textLine("", 12f).apply {
         visibility = View.GONE
         setTextColor(Color.rgb(91, 105, 109))
@@ -93,7 +98,10 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
             })
         positionBar.max = 1000
         positionBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onStartTrackingTouch(bar: SeekBar) { isScrubbing = true }
+            override fun onStartTrackingTouch(bar: SeekBar) {
+                isScrubbing = true
+                waveformView.setExternalScrubbing(true)
+            }
             override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
                 if (fromUser) {
                     val at = (playback.duration * progress.toLong()) / 1000L
@@ -105,6 +113,7 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
                 val target = (playback.duration * bar.progress.toLong()) / 1000L
                 isScrubbing = false
                 playback.seekTo(target)
+                waveformView.setExternalScrubbing(false)
                 updatePosition(playback.currentPosition, playback.duration)
             }
         })
@@ -213,6 +222,7 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
     /** Shut down the waveform worker when the Activity is destroyed. */
     fun close() {
         bpmDialog?.dismiss()
+        waveformView.close()
         waveformCoordinator.close()
     }
 
@@ -233,6 +243,7 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
     }
 
     fun updatePlaybackState() {
+        waveformView.refreshAnimationState()
         // playWhenReady does not flicker as ExoPlayer re-buffers during a seek.
         val expected = if (playback.showsPause) "Pause" else "Play"
         if (playButton.text != expected) playButton.text = expected
