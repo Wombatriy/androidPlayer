@@ -483,6 +483,45 @@ resumption the live media clock becomes authoritative again.
 New JVM tests cover old tick vs. newer media clock, pause and scrubbing
 positions, and visibility/lifecycle conditions for enabling vsync animation.
 
+### Performance follow-up — smooth clock and buffered drawing
+
+For devices that still show a jittery waveform after the initial vsync fix,
+the rendering pipeline has been tightened further:
+
+1. **Monotonic visual clock.** `WaveformFrameClock` interpolates the current
+   playback position against Android's monotonic clock, with the active
+   ExoPlayer playback speed. It does not blindly adopt jittery raw
+   `currentPosition` samples from the player. Small drift is corrected
+   gradually (at most 7 ms per 400 ms); real seeks, loop restarts, changes
+   of speed, pause and resume snap to the actual player position.
+   Audio playback itself is unchanged.
+2. **Buffered peak geometry.** On the first draw, only the current 20-second
+   window plus ~10 seconds of margin on each side is compiled into a cached
+   Android `Path`. The animation moves this stable Path without looping
+   through and regrouping all waveform peaks on every frame. New geometry
+   is prepared only when approaching the buffered edge, the user seeks out
+   of it or the zoom/screen dimensions change.
+3. **Less main-thread garbage.** Time labels are rebuilt only when the
+   whole displayed second changes; the previous two `String.format`
+   calls on every frame have been removed.
+4. **Background decoding yields to the player.** The worker uses Android's
+   `THREAD_PRIORITY_BACKGROUND`, sleeps 2 ms after every 12 decoded
+   output buffers and posts progress no more than once per ~750 ms.
+   You should see `Generating waveform… XX%` rather than a static
+   loading message while the first full-track analysis is running.
+   It still writes the same `waveforms-v2` format; no cache purge required.
+5. **Low-overhead diagnostics.** If a frame or draw takes at least 90 ms,
+   the waveform emits a throttled Logcat warning under the tag
+   `WaveformPerf` (no more than once per 10 seconds). These warnings
+   help distinguish a slow draw from an Android main-thread scheduling gap.
+
+**Important checks:** With music playing, watch whether the peaks glide
+steadily for 30 seconds on 1× and 0.7×; test once using an already cached
+waveform and once with a never-before-played song. Pause and scrub
+slowly, then try changing speed and A–B loop. The background waveform
+calculation should not freeze the rest of the Player UI. If it still does,
+capture the `WaveformPerf` Logcat lines and the Android frame timeline.
+
 ### Stability and touch spacing
 
 The waveform was enlarged from **112 dp to 176 dp** and given dedicated

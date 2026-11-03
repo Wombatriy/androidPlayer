@@ -139,6 +139,12 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [x] Persist version-2 waveform cache atomically, up to ~30 KB for 25-minute songs; old low-resolution cache is recalculated once
 - [x] Eliminate periodic waveform shimmer by anchoring drawn peak groups to **absolute 50ms audio bins**, instead of regrouping around the moving viewport
 - [x] Animate the visible waveform at display refresh (vsync), sampling ExoPlayer's live media position rather than stepping with the 120ms Player UI ticker
+- [x] Replace raw per-vsync player-position sampling with a monotonic interpolated visual clock, correcting small drift softly and snapping on seek/loop/speed/pause changes
+- [x] Pre-build only the local waveform peaks into a buffered Android Path; move this Path as audio progresses instead of regrouping hundreds of bins each frame
+- [x] Cache second labels to avoid repeated costly String.format/Formatter allocations during animation
+- [x] Reduce decoder/UI competition: explicit low Android scheduling priority, periodic worker yield and throttled decode percentage updates
+- [x] Rate-limit Logcat "WaveformPerf" diagnostics for >=90ms frame gaps / slow waveform draws so device-specific bottlenecks can be identified
+- [x] Add JVM tests for interpolation, speed changes, pausing, seek/loop jumps and reuse of buffered geometry over hundreds of frames
 - [x] Stop frame scheduling during pause/buffering, when Player is hidden, while scrubbing (waveform or full SeekBar), and on Activity teardown
 - [x] Keep playback-rate changes, A–B loop seeks and other position discontinuities in sync with the actual media clock
 - [x] Add JVM regression tests that reject stale 120ms ticker positions during playback and enforce pause/visibility/seekbar gating
