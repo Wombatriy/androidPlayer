@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.os.SystemClock
+import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -60,6 +61,8 @@ class WaveformView(
     private var externalScrubbing = false
     private var frameScheduled = false
     private var stopped = false
+    private var lastFrameNanos = 0L
+    private var lastWarningNanos = 0L
     private val smoothClock = WaveformFrameClock()
     private val peakPath = Path()
     private var cachedWaveform: WaveformData? = null
@@ -85,7 +88,13 @@ class WaveformView(
             if (!canAnimate()) return
             // Move continuously by a monotonic clock, not by the potentially
             // quantized media position returned by a particular device.
-            val current = smoothClock.positionAt(SystemClock.elapsedRealtimeNanos())
+            val now = SystemClock.elapsedRealtimeNanos()
+            if (lastFrameNanos > 0L) {
+                val gapMs = (now - lastFrameNanos) / 1_000_000L
+                warnIfSlow(gapMs, "vsync gap")
+            }
+            lastFrameNanos = now
+            val current = smoothClock.positionAt(now)
             if (positionMs != current) {
                 positionMs = current
                 postInvalidateOnAnimation()
@@ -112,6 +121,17 @@ class WaveformView(
         if (frameScheduled) {
             removeCallbacks(animationFrame)
             frameScheduled = false
+        }
+        lastFrameNanos = 0L
+    }
+
+    /** Log only substantial latency, at most once per ten seconds. */
+    private fun warnIfSlow(ms: Long, reason: String) {
+        if (ms < 90L) return
+        val now = SystemClock.elapsedRealtimeNanos()
+        if (now - lastWarningNanos >= 10_000_000_000L) {
+            lastWarningNanos = now
+            Log.w("WaveformPerf", "$reason: ${ms}ms (playback active, no user scrub)")
         }
     }
 
@@ -291,6 +311,7 @@ class WaveformView(
         WaveformMath.timeAtFraction(((x - left()) / (right() - left())).coerceIn(0f, 1f), window)
 
     override fun onDraw(canvas: Canvas) {
+        val drawStarted = SystemClock.elapsedRealtimeNanos()
         super.onDraw(canvas)
         val window = viewport()
         val l = left()
@@ -389,6 +410,10 @@ class WaveformView(
         canvas.drawText(firstLabel, l, height - context.dp(4).toFloat(), paint)
         canvas.drawText(lastLabel, r - paint.measureText(lastLabel),
             height - context.dp(4).toFloat(), paint)
+        warnIfSlow(
+            (SystemClock.elapsedRealtimeNanos() - drawStarted) / 1_000_000L,
+            "onDraw"
+        )
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
