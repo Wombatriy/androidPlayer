@@ -98,6 +98,25 @@ object WaveformMath {
             last.toInt().coerceIn(0, totalBins - 1) step groupSize
     }
 
+    /**
+     * A moving waveform must reuse its already-rendered Path for many
+     * consecutive frames. Rebuild only when the viewport approaches the
+     * buffered edges or its source/scale/dimensions changed.
+     */
+    fun peakPathNeedsRebuild(
+        viewport: Window,
+        cached: Window,
+        trackDurationMs: Long,
+        preloadMs: Long,
+        configurationChanged: Boolean
+    ): Boolean {
+        if (configurationChanged || viewport.lengthMs <= 0L) return true
+        if (viewport.startMs < cached.startMs || viewport.endMs > cached.endMs) return true
+        val cushion = preloadMs.coerceAtLeast(0L) / 6L
+        return (cached.startMs > 0L && viewport.startMs < cached.startMs + cushion) ||
+            (cached.endMs < trackDurationMs && viewport.endMs > cached.endMs - cushion)
+    }
+
     fun normalizedPeaks(peaks: DoubleArray): ByteArray {
         if (peaks.isEmpty()) return ByteArray(0)
         val sorted = peaks.filter { it.isFinite() && it >= 0.0 }.sorted()
