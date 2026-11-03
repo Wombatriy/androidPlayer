@@ -177,18 +177,24 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [ ] Future: sample-accurate gapless A–B loop editing (requires DSP-level loop control)
 - [ ] Future: support waveform previews beyond 25 minutes with careful resource caps
 
-## 09 — Background playback, lock-screen controls and Android Back
-- [ ] Extract ExoPlayer from Activity into a persistent foreground MediaSessionService
-- [ ] Android Back on Player returns to **Library** when playing from the virtual All Tracks list, or to **Queue** when started from a user playlist
-- [ ] Android Back on Library minimizes the app instead of terminating playback
-- [ ] Source-aware navigation history should not alter the playback queue or reset its position
-- [ ] Android Back must close/navigate the UI **without stopping current playback**
-- [ ] Support Play/Pause/Previous/Next from lock screen and system media notification
-- [ ] Keep playback running with screen off, Activity destroyed and app sent to background
-- [ ] Test Android Back, Home, recent-apps swipe, background process lifecycle and task recreation
-- [ ] Respect force-stop and explicit Stop as intentional playback termination
-- [ ] Test Bluetooth/headset buttons, interruptions and audio focus
-- [ ] Add service/notification permissions appropriate for Android API levels
+## 09 — MediaSessionService, background audio, lock-screen controls and Back (PR #12)
+- [x] Keep a **single** ExoPlayer/PlaybackController in MusicPlaybackService rather than MainActivity
+- [x] Retain playback queue, A–B loop, speed and end mode when Activity is recreated/closed; UI registers and unregisters a listener on service connect/destroy
+- [x] Media3 MediaSessionService manages the foreground media notification, system transport controls and task removal while actively playing
+- [x] Advertise title metadata; notification opens the Player tab through PendingIntent
+- [x] Forward system/Bluetooth Play/Pause/Next/Previous to the same ExoPlayer and PlaybackQueue as the app UI
+- [x] Forward system media scrub/seek through the same A–B-aware PlaybackController (not a raw ExoPlayer seek)
+- [x] Handle audio focus, pause-on-headphone-disconnect and CPU wake lock for playback with screen off
+- [x] Manifest registers mediaPlayback foreground service + required FGS and WAKE_LOCK permissions; add media3-session dependency matching media3-exoplayer
+- [x] Separate internal app Binder access from exported MediaSession controllers with an unguessable private installation token
+- [x] Android Back on Player returns to **Library** for All Tracks, or **Queue** for a user playlist
+- [x] Android Back from Library moves the task to the background without pausing audio; Back from Queue or Playlists returns to Library
+- [x] Use OnBackInvokedDispatcher on Android 13+ and onBackPressed on older versions
+- [x] Back navigation never resets the queue, track position or audio service; reopening from notification restores UI from the service state
+- [x] Add pure JVM BackNavigationPolicy tests for tab/source routing
+- [ ] **Verify on physical devices** notification controls and queue navigation; Android Back, Home, lock/unlock, recent-app swipe, task recreation, Bluetooth and audio focus
+- [ ] **Verify** system Stop, force-stop, playback after screen off, Bluetooth disconnect and phone interruption; Android/OEM battery-management differences
+- [ ] **Verify** that a long A–B loop and non-default speed continue while the Activity is destroyed and re-created
 
 ## 10 — High-quality time-stretch DSP (moved to the end)
 - [ ] Prioritize fidelity for **0.8×–1.1×**; outside that range, current Sonic is acceptable

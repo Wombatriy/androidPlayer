@@ -738,3 +738,90 @@ Even when a waveform cannot be generated, playback is unaffected.
 
 Android Back, MediaSessionService and background playback remain stage 09.
 GitHub Actions is manual-only and was not run automatically.
+
+## Iteration 09 — Background playback and Android MediaSession
+
+The music player now runs as a **Media3 MediaSessionService**. ExoPlayer,
+the current queue, track, loop boundaries and tempo are owned by
+`MusicPlaybackService`, not `MainActivity`. The four UI tabs attach
+to the existing playback controller through a protected same-process Binder
+and detach on Activity destruction; leaving the UI does **not** release
+or pause the audio engine.
+
+When music plays, Media3's standard media notification and system player
+provide Play/Pause, Next and Previous. It uses the same queue operations
+as the Player tab, so a user playlist's manually chosen order stays
+authoritative. The current track's name is included in MediaMetadata;
+tapping the media notification opens the app on the **Player** tab.
+The system seek action goes through the same A–B constrained seek logic
+as in-app navigation. We intentionally preserve ExoPlayer's single
+currently decoded song and the app's PlaybackQueue so playlist drag/reorder
+does not restart a playing track.
+
+A media playback foreground service is declared in AndroidManifest.xml with
+`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK` and
+`WAKE_LOCK`; no general filesystem permission is introduced.
+Media3 manages the foreground notification. Audio focus is enabled
+with media/music AudioAttributes; unplugging a wired/Bluetooth output
+uses the standard noisy-route pause handling. CPU wake mode supports
+screen-off playback. Because the MediaSession service is exported for
+standard system/assistant controllers, internal local Binder access is
+limited by a random app-private token.
+
+### Android Back behavior
+
+- **Player → Library** when playing from the virtual **All Tracks** source.
+- **Player → Queue** when the current source is a **user playlist**.
+- **Queue or Playlists → Library**.
+- **Library → background the app** without calling Play/Pause or release.
+
+The source-aware routing only changes the visible tab and never mutates
+the selected track, A–B loop, source list or queue position.
+Android 13+ uses the platform Back callback; older versions use
+`onBackPressed`.
+
+### Testing on an Android phone — do not merge before checking
+
+1. Build the branch, play a track and press **Home**. Playback should
+   continue, with a system media player/notification visible. Try
+   its Play/Pause and Next/Previous controls and verify the app queue.
+2. Turn the screen off for at least a few minutes, unlock, then tap
+   the media notification. The playing song, position, speed, loop and
+   selected queue should be retained.
+3. While playing, remove the app from **recent apps**. Audio should
+   continue through the foreground service. Reopen the app from the
+   launcher or media notification; it must reconnect to the existing
+   service rather than create a second player.
+4. Test Back from Player in an All Tracks song (Library) and from a
+   custom playlist song (Queue). Back from Library should minimize;
+   no Back sequence is allowed to stop or reset playback.
+5. Check **Bluetooth/headset** Play/Pause/Next/Previous and unplugging a
+   headphone. Test an incoming call/audio-focus interruption and resume
+   to ensure focus is handled correctly by Media3.
+6. Run a 2–3-second A–B loop at 0.7×, lock the screen and later return
+   to the app. The same loop must still be active and play continuously.
+7. Use controls on the system media panel to scrub and skip tracks;
+   make sure that active A–B boundaries are respected. Rename or reorder
+   an active playlist after returning to the foreground.
+8. Rotate the device (Activity recreation) and reopen from notification.
+   The existing audio engine must remain running. Stop playback via
+   system Stop if available; force-stop from Android Settings should
+   intentionally terminate audio.
+9. Repeat on Android 13+ and older versions if available, and compare
+   system gesture Back with the bottom navigation. Some OEM background
+   battery policies can restrict service lifetime independently of app code.
+
+`MainActivity.onDestroy` deliberately does **not** call
+`PlaybackController.release()`; only `MusicPlaybackService.onDestroy`
+releases ExoPlayer and MediaSession.
+
+GitHub Actions remains `workflow_dispatch` only; no automatic build
+was launched. Full Android Gradle compilation and hardware-device
+validation are not available in the current tooling and are pending.
+
+## Next: stage 10 — optional high-quality time-stretch DSP
+
+The remaining roadmap step is to assess a fidelity-oriented DSP for
+0.8×–1.1× and integrate it only if listening tests beat Media3's current
+Sonic-based speed control without crackling. The current playback
+pipeline is not modified in this service iteration.
