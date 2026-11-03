@@ -69,6 +69,35 @@ object WaveformMath {
         return (originMs.toDouble() - shift).toLong().coerceIn(0L, durationMs)
     }
 
+    /**
+     * Choose a stable downsampling factor for the selected zoom level.
+     * The factor depends on zoom and screen width, NEVER on the viewport
+     * position, so peaks don't change shape when the player advances.
+     */
+    fun drawGroupSize(window: Window, widthPixels: Int): Int {
+        if (window.lengthMs <= 0L || widthPixels <= 0) return 1
+        val bins = (window.lengthMs - 1L) / BIN_DURATION_MS + 1L
+        return ((bins - 1L) / widthPixels + 1L).toInt().coerceAtLeast(1)
+    }
+
+    /**
+     * Group indices are aligned to absolute track time (t=0), not the
+     * moving window edges. The same audio peak keeps the same group and
+     * height while the viewport moves; only its X coordinate changes.
+     */
+    fun visibleGroupStarts(
+        window: Window, totalBins: Int, groupSize: Int
+    ): IntProgression {
+        if (window.lengthMs <= 0L || totalBins <= 0 || groupSize <= 0) {
+            return 1..0
+        }
+        val periodMs = BIN_DURATION_MS * groupSize
+        val first = (window.startMs.coerceAtLeast(0L) / periodMs) * groupSize
+        val last = ((window.endMs - 1L).coerceAtLeast(0L) / periodMs) * groupSize
+        return first.toInt().coerceIn(0, totalBins - 1)..
+            last.toInt().coerceIn(0, totalBins - 1) step groupSize
+    }
+
     fun normalizedPeaks(peaks: DoubleArray): ByteArray {
         if (peaks.isEmpty()) return ByteArray(0)
         val sorted = peaks.filter { it.isFinite() && it >= 0.0 }.sorted()
