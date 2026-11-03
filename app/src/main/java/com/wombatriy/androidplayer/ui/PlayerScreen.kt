@@ -51,11 +51,14 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
         visibility = View.GONE
         setTextColor(Color.rgb(91, 105, 109))
     }
-    private val waveformCoordinator = WaveformCoordinator(context) { waveform, message ->
-        waveformView.setWaveform(waveform)
-        waveformStatus.text = message
-        waveformStatus.visibility = if (message.isBlank()) View.GONE else View.VISIBLE
-    }
+    private val waveformCoordinator = WaveformCoordinator(
+        context,
+        onWaveform = waveformView::setWaveform,
+        onStatus = { message ->
+            waveformStatus.text = message
+            waveformStatus.visibility = if (message.isBlank()) View.GONE else View.VISIBLE
+        }
+    )
     private val playButton = context.actionButton("Play") { playback.togglePlayPause() }
     private val previousButton = context.actionButton("Previous") { playback.previous() }
     private val nextButton = context.actionButton("Next") { playback.next() }
