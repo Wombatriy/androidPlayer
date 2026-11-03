@@ -458,6 +458,24 @@ For example, `5L` shows 10 seconds in total; `15L` shows 30 seconds.
   Playlists and Queue. `TabSwipeNavigator` explicitly excludes
   `WaveformView` to avoid any conflict.
 
+### Stability and touch spacing
+
+The waveform was enlarged from **112 dp to 176 dp** and given dedicated
+gaps before the full-track SeekBar and before Prev/−10s/Play/+10s/Next.
+This makes precise seeking easier and reduces accidental skip-button taps.
+
+**Periodic waveform shimmer has been fixed at the drawing level.**
+Previously, the renderer grouped peaks into bars aligned to the *moving
+viewport*, so neighboring peaks kept entering/leaving a screen bar as the
+playhead moved. The bars changed height every few pixels, even though the
+underlying cached sound was unchanged.
+
+Now rendered peak groups are anchored to the track's **absolute 50ms sample
+timeline**. They have stable amplitudes at a fixed zoom and only translate
+along the X axis when playing or scrubbing. Grouping changes only when the
+zoom level or screen width changes, not every time playback advances.
+No waveform cache refresh or re-decoding is necessary for this fix.
+
 The waveform follows your finger while scrubbing; actual player seeks are
 throttled to roughly **80 ms** between commands, plus a final seek on release,
 rather than overwhelming Media3 with a seek every touch event. An A/B loop
@@ -497,6 +515,11 @@ Even when a waveform cannot be generated, playback is unaffected.
 7. Perform Batch BPM detection while loading a new waveform, then
    verify responsive playback, UI and tab swipes elsewhere.
 8. Test a short track, seek near the end, and try unsupported/long media.
+9. Pause playback and slowly drag the same waveform segment back/forth;
+   its peaks should **slide smoothly** without cycling through different
+   heights or visibly rebuilding at regular intervals.
+10. Try precise seeking near waveform, full-track slider and transport
+    buttons: increased spacing should prevent accidental +10s/−10s actions.
 
 Android Back, MediaSessionService and background playback remain stage 09.
 GitHub Actions is manual-only and was not run automatically.

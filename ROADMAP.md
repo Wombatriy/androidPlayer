@@ -137,14 +137,17 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [x] Share the fair two-decoder limit with foreground/Batch BPM to keep the player responsive
 - [x] Improve sample resolution to one amplitude bucket per **50 ms** instead of 512 buckets for the whole track
 - [x] Persist version-2 waveform cache atomically, up to ~30 KB for 25-minute songs; old low-resolution cache is recalculated once
-- [x] Show only a configurable local window around playback (**±10 seconds by default**, see `WaveformView.WINDOW_RADIUS_SECONDS`)
+- [x] Eliminate periodic waveform shimmer by anchoring drawn peak groups to **absolute 50ms audio bins**, instead of regrouping around the moving viewport
+- [x] Add generous space between waveform, full-track SeekBar and transport buttons to reduce accidental +10s/−10s presses
+- [x] Add regression tests proving the same audio bins retain their identities, heights and smooth X translation as the viewport moves
+- [x] Show only a configurable local window around playback (**±10 seconds by default**, see `WaveformView.WINDOW_RADIUS_SECONDS`), now with taller 176dp display
 - [x] Keep a playhead and thin, read-only A/B loop markers; shaded region is clipped to the visible window
 - [x] Swipe waveform **left to advance**, **right to rewind**; throttle seeks (~80 ms), keep the waveform moving with the finger
 - [x] Tap within the visible waveform to seek precisely; no waveform long-press menu or marker dragging
 - [x] Set loop points A and B exclusively with existing Player buttons; Clear-loop continues to work as before
 - [x] Prevent waveform swipes from switching app tabs; other tab gestures remain unchanged
 - [x] Maintain ~25 ms loop-boundary checks while keeping UI position updates near ~120 ms
-- [x] JVM tests for local window edge clamping, time mapping, swipe direction/bounds, bin resolution and amplitude normalization
+- [x] JVM tests for local window edge clamping, time mapping, swipe direction/bounds, bin resolution and amplitude normalization plus viewport-stability regressions
 - [ ] Verify real-device zoomed waveform, seek responsiveness, waveform caching and no gesture conflicts
 - [ ] Future: sample-accurate gapless A–B loop editing (requires DSP-level loop control)
 - [ ] Future: support waveform previews beyond 25 minutes with careful resource caps
