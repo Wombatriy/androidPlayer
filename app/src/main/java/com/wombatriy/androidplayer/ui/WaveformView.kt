@@ -244,14 +244,16 @@ class WaveformView(
         val data = waveform ?: return
         val widthPx = right - left
         val groupSize = WaveformMath.drawGroupSize(window, widthPx.toInt())
-        val nearStart = cachedStartMs > 0L &&
-            window.startMs < cachedStartMs + PRELOAD_AROUND_WINDOW_MS / 6L
-        val nearEnd = cachedEndMs < durationMs &&
-            window.endMs > cachedEndMs - PRELOAD_AROUND_WINDOW_MS / 6L
-        val invalid = cachedWaveform !== data || cachedWindowLength != window.lengthMs ||
-            cachedWidth != width || cachedHeight != height ||
-            cachedGroupSize != groupSize || nearStart || nearEnd ||
-            window.startMs < cachedStartMs || window.endMs > cachedEndMs
+        val invalid = WaveformMath.peakPathNeedsRebuild(
+            viewport = window,
+            cached = WaveformMath.Window(cachedStartMs, cachedEndMs),
+            trackDurationMs = durationMs,
+            preloadMs = PRELOAD_AROUND_WINDOW_MS,
+            configurationChanged = cachedWaveform !== data ||
+                cachedWindowLength != window.lengthMs ||
+                cachedWidth != width || cachedHeight != height ||
+                cachedGroupSize != groupSize
+        )
         if (!invalid) return
 
         val newStart = (window.startMs - PRELOAD_AROUND_WINDOW_MS).coerceAtLeast(0L)
