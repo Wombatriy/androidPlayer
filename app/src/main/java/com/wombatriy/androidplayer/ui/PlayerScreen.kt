@@ -78,10 +78,19 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
         column.addView(controls)
 
         controls.addView(positionLabel)
+        // Taller waveform for easier inspection and touch targeting.
+        // Keep a substantial gap before the full-track seekbar below.
         controls.addView(waveformView,
-            LinearLayout.LayoutParams(-1, context.dp(112)))
+            LinearLayout.LayoutParams(-1, context.dp(176)).apply {
+                topMargin = context.dp(6)
+                bottomMargin = context.dp(18)
+            })
         controls.addView(waveformStatus)
-        controls.addView(positionBar)
+        controls.addView(positionBar,
+            LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = context.dp(8)
+                bottomMargin = context.dp(14)
+            })
         positionBar.max = 1000
         positionBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onStartTrackingTouch(bar: SeekBar) { isScrubbing = true }
@@ -119,7 +128,11 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
         addTransport(playButton)
         addTransport(context.actionButton("+10s") { playback.skipBy(10_000L) })
         addTransport(nextButton)
-        controls.addView(transport)
+        controls.addView(transport,
+            LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = context.dp(10)
+                bottomMargin = context.dp(6)
+            })
 
         // Center the speed value while keeping Reset as a small right-side action.
         val speedHeading = LinearLayout(context).apply {
