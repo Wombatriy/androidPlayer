@@ -16,7 +16,8 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class WaveformCoordinator(
     context: Context,
-    private val onChanged: (WaveformData?, String) -> Unit
+    private val onWaveform: (WaveformData?) -> Unit,
+    private val onStatus: (String) -> Unit
 ) {
     private val application = context.applicationContext
     private val cache = WaveformCache(application)
@@ -34,11 +35,14 @@ class WaveformCoordinator(
         if (uri == selectedUri) return
         selectedUri = uri
         val token = generation.incrementAndGet()
+        // Clear the old track exactly once. Decode progress must never clear
+        // an already selected waveform or cancel pending preview tiles.
+        onWaveform(null)
         if (uri == null) {
-            onChanged(null, "")
+            onStatus("")
             return
         }
-        onChanged(null, "Generating waveform…")
+        onStatus("Generating waveform…")
         executor.execute {
             // Java Thread.MIN_PRIORITY alone does not always lower Android's
             // Linux scheduler priority for MediaCodec work. Be explicit.
@@ -58,7 +62,7 @@ class WaveformCoordinator(
                         main.post {
                             if (!closed && generation.get() == token &&
                                 selectedUri == uri) {
-                                onChanged(null, "Generating waveform… $percent%")
+                                onStatus("Generating waveform… $percent%")
                             }
                         }
                     }
@@ -72,10 +76,11 @@ class WaveformCoordinator(
                     return@post
                 }
                 result.onSuccess { value ->
-                    onChanged(value, "")
+                    onWaveform(value)
+                    onStatus("")
                 }.onFailure { error ->
                     if (error !is CancellationException) {
-                        onChanged(null, error.message ?: "Waveform unavailable")
+                        onStatus(error.message ?: "Waveform unavailable")
                     }
                 }
             }
