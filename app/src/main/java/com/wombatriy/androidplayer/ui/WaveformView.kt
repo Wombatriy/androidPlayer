@@ -169,9 +169,13 @@ class WaveformView(
         val now = SystemClock.elapsedRealtimeNanos()
         val actual = actualMs.coerceIn(0L, durationMs.coerceAtLeast(0L))
         val requested = seekFence.confirmed(now)
+        val expected = requested ?: smoothClock.positionAt(now)
         smoothClock.sync(
             actual, now, playbackSpeed(), playbackRunning(), durationMs,
-            force = requested == null || kotlin.math.abs(actual - requested) > 1_200L
+            // Media3 may send SEEK followed by SEEK_ADJUSTMENT for the same
+            // operation. A second small adjustment must not reintroduce
+            // the visible backwards snap.
+            force = kotlin.math.abs(actual - expected) > 1_200L
         )
         if (!tracking && !externalScrubbing) {
             positionMs = smoothClock.positionAt(now)
