@@ -29,6 +29,44 @@ class PlaylistCatalogTest {
         assertEquals(all, PlaylistCatalog.move(all, "id-1", "a", -1))
     }
 
+    @Test fun dragDownInsertsAfterTargetAndKeepsOtherOrder() {
+        var all = base()
+        listOf("a", "b", "c", "d").forEach {
+            all = PlaylistCatalog.add(all, "id-1", it)
+        }
+        all = PlaylistCatalog.moveRelative(all, "id-1", "a", "c", afterTarget = true)
+        assertEquals(listOf("b", "c", "a", "d"), all.single().trackUris)
+    }
+
+    @Test fun dragUpInsertsBeforeTarget() {
+        var all = base()
+        listOf("a", "b", "c", "d").forEach {
+            all = PlaylistCatalog.add(all, "id-1", it)
+        }
+        all = PlaylistCatalog.moveRelative(all, "id-1", "d", "b", afterTarget = false)
+        assertEquals(listOf("a", "d", "b", "c"), all.single().trackUris)
+    }
+
+    @Test fun dragRetainsUnavailableUriBetweenPlayableEntries() {
+        var all = base()
+        listOf("a", "missing", "b", "c").forEach {
+            all = PlaylistCatalog.add(all, "id-1", it)
+        }
+        all = PlaylistCatalog.moveRelative(all, "id-1", "c", "b", afterTarget = false)
+        assertEquals(listOf("a", "missing", "c", "b"), all.single().trackUris)
+    }
+
+    @Test fun dragIsNoOpForMissingOrSameItem() {
+        var all = base()
+        listOf("a", "b").forEach { all = PlaylistCatalog.add(all, "id-1", it) }
+        assertEquals(all,
+            PlaylistCatalog.moveRelative(all, "id-1", "a", "a", afterTarget = true))
+        assertEquals(all,
+            PlaylistCatalog.moveRelative(all, "id-1", "gone", "a", afterTarget = true))
+        assertEquals(all,
+            PlaylistCatalog.moveRelative(all, "id-1", "a", "gone", afterTarget = true))
+    }
+
     @Test fun safRenamePreservesSlotsAndDeduplicates() {
         var all = PlaylistCatalog.add(base(), "id-1", "content://old")
         all = PlaylistCatalog.add(all, "id-1", "content://next")

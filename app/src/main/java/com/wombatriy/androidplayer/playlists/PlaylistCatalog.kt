@@ -59,6 +59,32 @@ object PlaylistCatalog {
         }
     }
 
+
+    /**
+     * Drag and drop into the slot BEFORE or AFTER the drop target.
+     * URI identity is used instead of indices: missing/inaccessible songs stay
+     * in their old relative position even if they aren't in the playback queue.
+     */
+    fun moveRelative(
+        all: List<UserPlaylist>,
+        id: String,
+        movingUri: String,
+        targetUri: String,
+        afterTarget: Boolean
+    ): List<UserPlaylist> = edit(all, id) { playlist ->
+        val src = playlist.trackUris.indexOf(movingUri)
+        val dst = playlist.trackUris.indexOf(targetUri)
+        if (src < 0 || dst < 0 || src == dst) playlist
+        else {
+            val ordered = playlist.trackUris.toMutableList()
+            ordered.removeAt(src)
+            val index = ordered.indexOf(targetUri) + if (afterTarget) 1 else 0
+            ordered.add(index, movingUri)
+            if (ordered == playlist.trackUris) playlist
+            else playlist.copy(trackUris = ordered)
+        }
+    }
+
     /** SAF rename may return a different URI. Keep the item in the same slot. */
     fun replaceUri(all: List<UserPlaylist>, oldUri: String, newUri: String): List<UserPlaylist> {
         if (oldUri == newUri) return all

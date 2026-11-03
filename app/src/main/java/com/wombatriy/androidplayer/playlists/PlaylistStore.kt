@@ -32,6 +32,18 @@ class PlaylistStore(context: Context) {
     fun move(id: String, uri: String, delta: Int) =
         set(PlaylistCatalog.move(entries, id, uri, delta))
 
+    /** @return true when the stored order really changed. */
+    fun moveRelative(
+        id: String, movingUri: String, targetUri: String, afterTarget: Boolean
+    ): Boolean {
+        val updated = PlaylistCatalog.moveRelative(
+            entries, id, movingUri, targetUri, afterTarget
+        )
+        if (updated == entries) return false
+        set(updated)
+        return true
+    }
+
     fun replaceUri(before: String, after: String) =
         set(PlaylistCatalog.replaceUri(entries, before, after))
 

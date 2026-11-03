@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.View
+import android.view.MotionEvent
 import android.view.WindowInsets
 import android.widget.Button
 import android.widget.FrameLayout
@@ -88,6 +89,8 @@ class MainActivity : Activity() {
             }
         )
     }
+
+    private val tabSwipe by lazy { com.wombatriy.androidplayer.ui.TabSwipeNavigator(this) }
 
     private var activeTab = 1
     private var loadedFromCache = false
@@ -172,10 +175,17 @@ class MainActivity : Activity() {
             },
             onCatalogChanged = playlists::onPlaylistChanged
         )
-        queueScreen = QueueScreen(this, playback) { index ->
-            if (!renameFlow.busy) playback.playQueueIndex(index)
-            else Toast.makeText(this, "Finish renaming first", Toast.LENGTH_SHORT).show()
-        }
+        queueScreen = QueueScreen(
+            this, playback,
+            onChooseTrack = { index ->
+                if (!renameFlow.busy) playback.playQueueIndex(index)
+                else Toast.makeText(this, "Finish renaming first", Toast.LENGTH_SHORT).show()
+            },
+            onReorder = { moving, target, after ->
+                if (renameFlow.busy) false
+                else playlists.reorderActive(moving, target, after)
+            }
+        )
         pages = listOf(playerScreen, libraryScreen, playlistsScreen, queueScreen)
         val host = FrameLayout(this)
         pages.forEach { page ->
@@ -211,12 +221,39 @@ class MainActivity : Activity() {
         root.requestApplyInsets()
     }
 
+    /**
+     * Recognize horizontal navigation before child views handle the event.
+     * Cancel the previous touch target on a recognized swipe, so a track tap
+     * never fires in addition to changing tabs.
+     */
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (!::pages.isInitialized) return super.dispatchTouchEvent(event)
+        return when (val step = tabSwipe.onTouch(event, activeTab, pages.size)) {
+            null -> super.dispatchTouchEvent(event)
+            0 -> true
+            else -> {
+                val cancel = MotionEvent.obtain(event)
+                cancel.action = MotionEvent.ACTION_CANCEL
+                super.dispatchTouchEvent(cancel)
+                cancel.recycle()
+                showTab(activeTab + step)
+                true
+            }
+        }
+    }
+
     private fun showTab(index: Int) {
         if (activeTab == 1 && index != 1) saveScrollPosition()
         activeTab = index.coerceIn(0, pages.lastIndex)
         // Keep tab instances and their state in memory; never reconstruct lists.
         pages.forEachIndexed { i, page ->
             page.visibility = if (i == activeTab) View.VISIBLE else View.GONE
+        }
+        // Reconcile a queue drag with the Playlists editor whenever it becomes
+        // visible. Do not recreate either screen or lose its scroll position.
+        when (activeTab) {
+            2 -> playlistsScreen.refresh()
+            3 -> queueScreen.refresh()
         }
     }
 
