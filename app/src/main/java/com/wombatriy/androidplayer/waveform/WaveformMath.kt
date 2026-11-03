@@ -111,6 +111,17 @@ object WaveformMath {
         )
     }
 
+    /**
+     * The two waveform colors share exactly one clip boundary. Keeping the
+     * played and upcoming ranges disjoint prevents double alpha compositing
+     * of green strokes over muted strokes as the waveform scrolls.
+     */
+    fun progressSplitX(playheadX: Float, leftPx: Float, rightPx: Float): Float {
+        if (!playheadX.isFinite() || !leftPx.isFinite() || !rightPx.isFinite() ||
+            rightPx <= leftPx) return leftPx
+        return playheadX.coerceIn(leftPx, rightPx)
+    }
+
     /** A tile is usable only while it contains the ENTIRE visible timeline. */
     fun tileCovers(viewport: Window, tile: Window): Boolean =
         viewport.lengthMs > 0L && tile.lengthMs > 0L &&
