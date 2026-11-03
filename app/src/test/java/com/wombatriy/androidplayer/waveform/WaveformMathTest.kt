@@ -109,6 +109,31 @@ class WaveformMathTest {
         ).none())
     }
 
+    @Test fun peakPathRemainsCachedThroughHundredsOfSmoothFrames() {
+        val cache = WaveformMath.Window(80_000L, 120_000L)
+        // A 20-second viewport drifts across the same prepared 40-second Path.
+        for (shiftMs in 0L..8_000L step 16L) {
+            assertFalse(WaveformMath.peakPathNeedsRebuild(
+                viewport = WaveformMath.Window(90_000L + shiftMs, 110_000L + shiftMs),
+                cached = cache, trackDurationMs = 240_000L,
+                preloadMs = 10_000L, configurationChanged = false
+            ))
+        }
+    }
+
+    @Test fun peakPathRebuildsOnlyWhenViewportNearsBufferedBoundary() {
+        val cache = WaveformMath.Window(80_000L, 120_000L)
+        assertTrue(WaveformMath.peakPathNeedsRebuild(
+            WaveformMath.Window(99_000L, 119_000L), cache, 240_000L, 10_000L, false
+        ))
+        assertTrue(WaveformMath.peakPathNeedsRebuild(
+            WaveformMath.Window(90_000L, 110_000L), cache, 240_000L, 10_000L, true
+        ))
+        assertFalse(WaveformMath.peakPathNeedsRebuild(
+            WaveformMath.Window(90_000L, 110_000L), cache, 240_000L, 10_000L, false
+        ))
+    }
+
     @Test fun missingDurationIsHandled() {
         assertEquals(WaveformMath.Window(0L, 0L),
             WaveformMath.windowAround(1_000L, 0L, 10_000L))
