@@ -243,6 +243,14 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
         positionLabel.text = "${format(positionMs)} / ${format(durationMs)}"
     }
 
+    fun onSeekRequested(targetMs: Long) {
+        waveformView.onSeekRequested(targetMs)
+    }
+
+    fun onSeekApplied(actualMs: Long) {
+        waveformView.onSeekApplied(actualMs)
+    }
+
     fun updatePlaybackState() {
         waveformView.refreshAnimationState()
         // playWhenReady does not flicker as ExoPlayer re-buffers during a seek.
