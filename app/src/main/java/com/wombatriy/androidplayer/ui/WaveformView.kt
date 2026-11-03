@@ -4,8 +4,6 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.PorterDuff
-import android.graphics.PorterDuffColorFilter
 import android.os.SystemClock
 import android.util.Log
 import android.view.MotionEvent
@@ -72,17 +70,33 @@ class WaveformView(
     private var lastWarningNanos = 0L
     private val smoothClock = WaveformFrameClock()
     private var tile: WaveformTileRenderer.Tile? = null
+    // Already tinted off the UI thread; no dynamic GPU color filter.
+    private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val mutedFallbackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = muted
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+    }
+    private val playedFallbackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = teal
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+    }
+    private var fallbackSegments = FloatArray(0)
     private val tiles = WaveformTileRenderer { ready ->
-        if (!stopped && waveform === ready.source) {
-            tile = ready
-            invalidate()
+        if (!stopped && waveform === ready.source && !tracking && !externalScrubbing) {
+            val visible = viewport()
+            val compatible = ready.windowMs == visible.lengthMs &&
+                ready.viewWidth == (right() - left()).toInt() &&
+                ready.viewHeight == height
+            if (compatible && visible.startMs >= ready.startMs &&
+                visible.endMs <= ready.endMs) {
+                // Never swap in an obsolete tile from an earlier seek:
+                // it would make the current waveform disappear for a frame.
+                tile = ready
+                invalidate()
+            }
         }
-    }
-    private val mutedBitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
-        colorFilter = PorterDuffColorFilter(muted, PorterDuff.Mode.SRC_IN)
-    }
-    private val playedBitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
-        colorFilter = PorterDuffColorFilter(teal, PorterDuff.Mode.SRC_IN)
     }
     private var firstLabelSecond = -1L
     private var lastLabelSecond = -1L
@@ -333,10 +347,66 @@ class WaveformView(
                 configurationChanged = !compatible
             )
         }
-        if (needsPrefetch) {
+        // During finger scrubbing the fallback below remains visible.
+        // Don't generate/cancel one bitmap for every MotionEvent:
+        // ask for a definitive tile once the finger is released.
+        if (needsPrefetch && !tracking && !externalScrubbing) {
             tiles.request(data, window, durationMs, contentWidth, height, size)
         }
         return if (covered) current else null
+    }
+
+    /**
+     * Immediate fallback for uncovered windows during a fast swipe/seek.
+     * No bitmap allocation, decoder, Path, or per-bar Canvas call occurs.
+     * The same absolute 50ms groups and stroke width as the background
+     * bitmap are used, so switching from preview to ready tile is stable.
+     */
+    private fun drawTemporaryPeaks(
+        canvas: Canvas,
+        window: WaveformMath.Window,
+        leftPx: Float,
+        rightPx: Float,
+        centerY: Float,
+        amplitudePx: Float
+    ) {
+        val peaks = waveform?.levels ?: return
+        if (window.lengthMs <= 0L || peaks.isEmpty()) return
+        val widthPx = rightPx - leftPx
+        val groupSize = WaveformMath.drawGroupSize(window, widthPx.toInt())
+        val needed = ((widthPx.toInt().coerceAtLeast(1) + 4) * 4)
+        if (fallbackSegments.size < needed) fallbackSegments = FloatArray(needed)
+        var n = 0
+        for (first in WaveformMath.visibleGroupStarts(window, peaks.size, groupSize)) {
+            if (n + 4 > fallbackSegments.size) break
+            val last = (first + groupSize - 1).coerceAtMost(peaks.lastIndex)
+            var peak = 0
+            for (index in first..last) peak = maxOf(peak, peaks[index].toInt() and 255)
+            val centerTimeMs = (first.toLong() + (last - first + 1) / 2.0) *
+                WaveformMath.BIN_DURATION_MS
+            val x = leftPx + ((centerTimeMs - window.startMs).toDouble() *
+                widthPx / window.lengthMs).toFloat()
+            val halfHeight = max(1f, amplitudePx * peak / 255f)
+            fallbackSegments[n++] = x
+            fallbackSegments[n++] = centerY - halfHeight
+            fallbackSegments[n++] = x
+            fallbackSegments[n++] = centerY + halfHeight
+        }
+        val strokeWidth = max(1f,
+            WaveformMath.BIN_DURATION_MS * groupSize * widthPx / window.lengthMs * 0.82f)
+        mutedFallbackPaint.strokeWidth = strokeWidth
+        playedFallbackPaint.strokeWidth = strokeWidth
+        canvas.save()
+        canvas.clipRect(leftPx, 0f, rightPx, height.toFloat())
+        canvas.drawLines(fallbackSegments, 0, n, mutedFallbackPaint)
+        canvas.restore()
+        val progressPx = xFor(displayedPosition(), window).coerceIn(leftPx, rightPx)
+        if (progressPx > leftPx) {
+            canvas.save()
+            canvas.clipRect(leftPx, 0f, progressPx, height.toFloat())
+            canvas.drawLines(fallbackSegments, 0, n, playedFallbackPaint)
+            canvas.restore()
+        }
     }
 
     private fun xFor(ms: Long, window: WaveformMath.Window): Float =
@@ -385,14 +455,20 @@ class WaveformView(
             // remain in the main-thread hot path.
             canvas.save()
             canvas.clipRect(l, 0f, r, height.toFloat())
-            canvas.drawBitmap(prepared.bitmap, translationX, 0f, mutedBitmapPaint)
+            canvas.drawBitmap(prepared.mutedBitmap, translationX, 0f, bitmapPaint)
             canvas.restore()
             if (playhead > l) {
                 canvas.save()
                 canvas.clipRect(l, 0f, playhead.coerceAtMost(r), height.toFloat())
-                canvas.drawBitmap(prepared.bitmap, translationX, 0f, playedBitmapPaint)
+                canvas.drawBitmap(prepared.playedBitmap, translationX, 0f, bitmapPaint)
                 canvas.restore()
             }
+        } else if (waveform != null) {
+            // The user can scrub farther than the currently cached tile.
+            // Never display an empty strip while the next bitmap is building:
+            // draw at most ~screenWidth predecoded peak groups in two batched
+            // drawLines calls. This fallback is only used on cache misses.
+            drawTemporaryPeaks(canvas, window, l, r, middle, heightScale)
         }
 
         fun marker(time: Long?, label: String, color: Int) {
