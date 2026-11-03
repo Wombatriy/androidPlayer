@@ -524,6 +524,30 @@ slowly, then try changing speed and A–B loop. The background waveform
 calculation should not freeze the rest of the Player UI. If it still does,
 capture the `WaveformPerf` Logcat lines and the Android frame timeline.
 
+### Seek and pause/resume visual alignment
+
+A follow-up fixed a small backwards jump that occurred immediately after
+tapping or swiping the waveform/full-track SeekBar, or when pressing Play/Pause.
+The cause was that Media3 could still report the **old** media position just
+after accepting a seek. The waveform then re-anchored to that stale value,
+before jumping forward again to the requested position.
+
+PlaybackController now notifies PlayerScreen/WaveformView of the **intended
+target before `ExoPlayer.seekTo()`**, and separately reports the confirmed
+`onPositionDiscontinuity` event. A bounded seek guard prevents stale
+position samples from taking control during settlement. A second small
+`SEEK_ADJUSTMENT` event does not reset the timeline a second time.
+
+The interpolated waveform clock also **keeps its current visual position**
+when playback pauses, resumes or changes speed. Only its rate changes;
+minor clock differences are corrected gently instead of being turned into
+an immediate backwards jump.
+
+Test several small seeks (100–800 ms) and large seeks, repeated scrubs,
+pausing at different points in a second, resuming at 0.7×, and A–B loop
+restarts. The waveform should respond to each deliberate seek immediately
+and should not briefly start from the old location before retreating.
+
 ### UI responsiveness after waveform generation
 
 A later phone test showed that the previous cached `Path` renderer still
