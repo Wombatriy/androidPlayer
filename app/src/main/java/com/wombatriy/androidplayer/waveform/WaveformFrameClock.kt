@@ -32,7 +32,7 @@ class WaveformFrameClock {
      * periodic coarse Player UI ticks. Small position jitter is softly
      * corrected at most every 400ms, without snapping the waveform.
      *
-     * Large errors (seek, loop restart, source change) snap immediately.
+     * Explicit seeks/loops reset with force; large unannounced changes are a fallback.
      */
     fun sync(
         observedMs: Long,
@@ -47,18 +47,26 @@ class WaveformFrameClock {
         val validSpeed = playbackSpeed.takeIf { it.isFinite() && it > 0f } ?: 1f
         val predicted = positionAt(timeNanos).toDouble()
         val error = observed - predicted
-        val mustReset = force || !initialized || running != isPlaying ||
-            speed != validSpeed || durationMs != safeDuration ||
+        // Media3's reported position can lag the visual clock slightly
+        // around pause/resume and immediately after a seek. Only a *known*
+        // discontinuity (force) or a change of media item/duration may snap
+        // the waveform. A small stale position sample must never do so.
+        val mustReset = force || !initialized || durationMs != safeDuration ||
             abs(error) >= HARD_DISCONTINUITY_MS
+        val stateChanged = running != isPlaying || speed != validSpeed
 
         durationMs = safeDuration
         if (mustReset) {
             anchorPositionMs = observed
             anchorNanos = timeNanos
             lastCorrectionNanos = timeNanos
+        } else if (stateChanged) {
+            // Preserve the position already on screen as playback starts,
+            // pauses, or changes tempo. Only the clock slope changes.
+            anchorPositionMs = predicted.coerceIn(0.0, safeDuration.toDouble())
+            anchorNanos = timeNanos
+            lastCorrectionNanos = timeNanos
         } else if (timeNanos - lastCorrectionNanos >= SYNC_INTERVAL_NS) {
-            // Correct at most 7ms per sync: users never see a snap and the
-            // display remains close to the hardware media clock.
             anchorPositionMs = (predicted + (error * 0.14)
                 .coerceIn(-MAX_CORRECTION_MS, MAX_CORRECTION_MS))
                 .coerceIn(0.0, safeDuration.toDouble())
@@ -71,7 +79,7 @@ class WaveformFrameClock {
     }
 
     companion object {
-        private const val HARD_DISCONTINUITY_MS = 260.0
+        private const val HARD_DISCONTINUITY_MS = 1_200.0
         private const val MAX_CORRECTION_MS = 7.0
         private const val SYNC_INTERVAL_NS = 400_000_000L
     }
