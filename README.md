@@ -524,6 +524,34 @@ slowly, then try changing speed and A–B loop. The background waveform
 calculation should not freeze the rest of the Player UI. If it still does,
 capture the `WaveformPerf` Logcat lines and the Android frame timeline.
 
+### Played-color flicker and fast-scrubbing visibility
+
+**Waveform data and progress text now use independent callbacks.** The
+decoder's `Generating waveform… 45%` messages used to pass `null` as
+waveform data, making the screen cancel tiles and clear the graph during
+analysis. Progress now updates only the status text. A track change clears
+the old graph once, and successful decoding installs the new graph once.
+
+**Both playback colors are rasterized in the background** into a pair of
+small, already-colored bitmaps. Per-frame GPU recoloring of the moving mask
+was removed. The familiar muted/green split is preserved.
+
+A fast seek may leave the visible time range outside the prepared tile
+before a replacement is ready. Instead of drawing an empty region, the
+view temporarily renders the current range from the already-cached 50ms
+peak values with two batched `Canvas.drawLines` calls. No MediaCodec, full
+Path rebuild, audio read or extra bitmap allocation occurs during this
+fallback. Tile generation is paused while dragging and resumed on release;
+outdated results are rejected so they cannot replace the currently visible
+range.
+
+**Phone checks:** Scrub the full-track SeekBar quickly back and forth
+while paused, then swipe the zoomed waveform across large distances.
+Peaks and their played-green section must remain visible rather than
+flashing blank. With a newly decoded file, updating progress percentages
+must not repeatedly clear the waveform. Also verify smooth 30fps playback
+and responsive Play/Pause and speed controls on a cached file.
+
 ### Seek and pause/resume visual alignment
 
 A follow-up fixed a small backwards jump that occurred immediately after

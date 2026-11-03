@@ -143,7 +143,10 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [x] Distinguish **seek requested** from Media3's **seek confirmed** so stale positions cannot cause a brief backwards jump after a tap or swipe
 - [x] Ignore old Media3 position samples for a short bounded interval during seek settlement; do not snap on tiny SEEK_ADJUSTMENT events
 - [x] Regression tests for seek-settling grace period, repeated seeks, stale Play/Pause position and tempo transitions
-- [x] Offload waveform rasterization to a dedicated low-priority worker and cache small transparent bitmap tiles; main-thread onDraw only translates/tints ready tiles
+- [x] Offload waveform rasterization to a dedicated low-priority worker; both played/muted colors are prepared in the bitmap rather than GPU-tinted each frame
+- [x] Never blank a waveform during rapid SeekBar/waveform dragging: show a bounded batched-line preview while the target bitmap is unavailable
+- [x] Suppress costly tile rebuild churn during dragging; request the final background tile after finger release, and reject stale tiles that no longer cover the viewport
+- [x] Separate decode progress/status callbacks from waveform data so progress text cannot repeatedly reset preview tiles
 - [x] Cache second labels to avoid repeated costly String.format/Formatter allocations during animation
 - [x] Cap waveform animation to ~30 fps so playback controls and the tempo SeekBar retain main-thread time
 - [x] Bound rasterization to one running and one pending tile; discard obsolete renders on fast scrubs and cancel after track/size changes
