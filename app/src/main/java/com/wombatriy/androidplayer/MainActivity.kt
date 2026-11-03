@@ -3,6 +3,12 @@ package com.wombatriy.androidplayer
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.content.ComponentName
+import android.content.Context
+import android.content.ServiceConnection
+import android.os.IBinder
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
@@ -20,6 +26,8 @@ import com.wombatriy.androidplayer.bpm.BpmBatchAnalyzer
 import com.wombatriy.androidplayer.library.LibraryRepository
 import com.wombatriy.androidplayer.playlists.PlaylistCoordinator
 import com.wombatriy.androidplayer.player.PlaybackController
+import com.wombatriy.androidplayer.player.MusicPlaybackService
+import com.wombatriy.androidplayer.player.BackNavigationPolicy
 import com.wombatriy.androidplayer.ui.LibraryScreen
 import com.wombatriy.androidplayer.ui.PlayerScreen
 import com.wombatriy.androidplayer.ui.PlaylistsScreen
@@ -33,6 +41,69 @@ import kotlin.math.roundToInt
  */
 class MainActivity : Activity() {
     private lateinit var playback: PlaybackController
+    private var serviceBound = false
+    private var pendingUiState: Bundle? = null
+    private val backCallback = OnBackInvokedCallback { handleBackNavigation() }
+
+    private val playbackListener = object : PlaybackController.Listener {
+        override fun onTrackChanged() {
+            bpmCoordinator.selectTrack(playback.currentTrack)
+            playerScreen.refreshTrack()
+        }
+        override fun onPlaybackControlsChanged() = playerScreen.updatePlaybackState()
+        override fun onPositionChanged(positionMs: Long, durationMs: Long) =
+            playerScreen.updatePosition(positionMs, durationMs)
+        override fun onSeekRequested(targetMs: Long) =
+            playerScreen.onSeekRequested(targetMs)
+        override fun onSeekApplied(actualMs: Long) =
+            playerScreen.onSeekApplied(actualMs)
+        override fun onLoopChanged() = playerScreen.updateLoop()
+        override fun onPlaybackError(message: String) = playerScreen.showPlaybackError(message)
+        override fun onSpeedChanged() = playerScreen.refreshSpeed()
+        override fun onQueueChanged() {
+            if (::queueScreen.isInitialized) queueScreen.refresh()
+        }
+    }
+
+    private val connection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName, binder: IBinder) {
+            if (isFinishing || isDestroyed) return
+            val local = binder as? MusicPlaybackService.LocalBinder ?: run {
+                Toast.makeText(this@MainActivity, "Playback connection failed", Toast.LENGTH_LONG).show()
+                return
+            }
+            // If Android restarted the service while this Activity still
+            // exists, rebuild every view against its new playback instance.
+            if (::playerScreen.isInitialized) {
+                recreate()
+                return
+            }
+            playback = local.playback
+            createLayout()
+            val saved = pendingUiState
+            pendingUiState = null
+            libraryScreen.restorePosition(
+                saved?.getInt(STATE_SCROLL_INDEX) ?: prefs.getInt(KEY_SCROLL_INDEX, 0),
+                saved?.getInt(STATE_SCROLL_OFFSET) ?: prefs.getInt(KEY_SCROLL_OFFSET, 0),
+                saved?.getString(STATE_SCROLL_URI) ?: prefs.getString(KEY_SCROLL_URI, null)
+            )
+            showTab(activeTab)
+            playback.addListener(playbackListener)
+            // A MediaSession may already be playing when the user opens
+            // the app again from its notification.
+            bpmCoordinator.selectTrack(playback.currentTrack)
+            playerScreen.refreshTrack()
+            queueScreen.refresh()
+            restoreFolder()
+        }
+
+        override fun onServiceDisconnected(name: ComponentName) {
+            if (::status.isInitialized) {
+                status.text = "Playback service restarting…"
+            }
+        }
+    }
+
     private lateinit var playerScreen: PlayerScreen
     private lateinit var libraryScreen: LibraryScreen
     private lateinit var playlistsScreen: PlaylistsScreen
@@ -98,36 +169,38 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        playback = PlaybackController(this, object : PlaybackController.Listener {
-            override fun onTrackChanged() {
-                bpmCoordinator.selectTrack(playback.currentTrack)
-                playerScreen.refreshTrack()
-            }
-            override fun onPlaybackControlsChanged() = playerScreen.updatePlaybackState()
-            override fun onPositionChanged(positionMs: Long, durationMs: Long) =
-                playerScreen.updatePosition(positionMs, durationMs)
-            override fun onSeekRequested(targetMs: Long) =
-                playerScreen.onSeekRequested(targetMs)
-            override fun onSeekApplied(actualMs: Long) =
-                playerScreen.onSeekApplied(actualMs)
-            override fun onLoopChanged() = playerScreen.updateLoop()
-            override fun onPlaybackError(message: String) = playerScreen.showPlaybackError(message)
-            override fun onSpeedChanged() = playerScreen.refreshSpeed()
-            override fun onQueueChanged() {
-                if (::queueScreen.isInitialized) queueScreen.refresh()
-            }
-        })
-        createLayout()
-        if (savedInstanceState != null) {
-            activeTab = savedInstanceState.getInt(STATE_TAB, 1)
+        pendingUiState = savedInstanceState
+        activeTab = if (intent?.action == ACTION_SHOW_PLAYER) {
+            0
+        } else savedInstanceState?.getInt(STATE_TAB, 1) ?: 1
+
+        // Android 13+ predictive back requires the platform dispatcher.
+        // Older devices use onBackPressed below.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT, backCallback
+            )
         }
-        libraryScreen.restorePosition(
-            savedInstanceState?.getInt(STATE_SCROLL_INDEX) ?: prefs.getInt(KEY_SCROLL_INDEX, 0),
-            savedInstanceState?.getInt(STATE_SCROLL_OFFSET) ?: prefs.getInt(KEY_SCROLL_OFFSET, 0),
-            savedInstanceState?.getString(STATE_SCROLL_URI) ?: prefs.getString(KEY_SCROLL_URI, null)
-        )
-        showTab(activeTab)
-        restoreFolder()
+        setContentView(TextView(this).apply {
+            text = "Connecting to playback…"
+            gravity = android.view.Gravity.CENTER
+        })
+        val bindIntent = Intent(this, MusicPlaybackService::class.java).apply {
+            action = MusicPlaybackService.ACTION_LOCAL_BIND
+        }
+        serviceBound = bindService(bindIntent, connection, Context.BIND_AUTO_CREATE)
+        if (!serviceBound) {
+            Toast.makeText(this, "Cannot start playback service", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.action == ACTION_SHOW_PLAYER) {
+            activeTab = 0
+            if (::pages.isInitialized) showTab(0)
+        }
     }
 
     private fun createLayout() {
@@ -402,7 +475,7 @@ class MainActivity : Activity() {
     }
 
     override fun onPause() {
-        saveScrollPosition()
+        if (::libraryScreen.isInitialized) saveScrollPosition()
         super.onPause()
     }
 
@@ -415,23 +488,58 @@ class MainActivity : Activity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putInt(STATE_TAB, activeTab)
-        outState.putInt(STATE_SCROLL_INDEX, libraryScreen.firstVisibleIndex)
-        outState.putInt(STATE_SCROLL_OFFSET, libraryScreen.firstVisibleOffset)
-        outState.putString(STATE_SCROLL_URI, libraryScreen.firstVisibleUri)
+        if (::libraryScreen.isInitialized) {
+            outState.putInt(STATE_SCROLL_INDEX, libraryScreen.firstVisibleIndex)
+            outState.putInt(STATE_SCROLL_OFFSET, libraryScreen.firstVisibleOffset)
+            outState.putString(STATE_SCROLL_URI, libraryScreen.firstVisibleUri)
+        }
         super.onSaveInstanceState(outState)
     }
 
+    /** Navigate inside the app; never release the service-owned player. */
+    private fun handleBackNavigation() {
+        if (!::pages.isInitialized) {
+            moveTaskToBack(true)
+            return
+        }
+        val target = BackNavigationPolicy.destination(
+            currentTab = activeTab,
+            fromPlaylist = playback.activePlaylistId != null
+        )
+        if (target == BackNavigationPolicy.BACKGROUND_APP) {
+            moveTaskToBack(true)
+        } else {
+            showTab(target)
+        }
+    }
+
+    @Deprecated("Platform OnBackInvokedDispatcher handles API 33+.")
+    override fun onBackPressed() {
+        handleBackNavigation()
+    }
+
     override fun onDestroy() {
-        playerScreen.close()
-        renameFlow.close()
-        batchAnalyzer.close()
-        bpmCoordinator.close()
-        playback.release()
-        libraryRepository.close()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            onBackInvokedDispatcher.unregisterOnBackInvokedCallback(backCallback)
+        }
+        if (::playerScreen.isInitialized) {
+            playback.removeListener(playbackListener)
+            playerScreen.close()
+            renameFlow.close()
+            batchAnalyzer.close()
+            bpmCoordinator.close()
+            libraryRepository.close()
+        }
+        if (serviceBound) {
+            unbindService(connection)
+            serviceBound = false
+        }
+        // NEVER release playback here: it belongs to the MediaSessionService.
         super.onDestroy()
     }
 
     companion object {
+        const val ACTION_SHOW_PLAYER = "com.wombatriy.androidplayer.SHOW_PLAYER"
         private const val FOLDER_REQUEST = 41
         private const val KEY_TREE_URI = "treeUri"
         private const val KEY_SCROLL_INDEX = "scrollIndex"
