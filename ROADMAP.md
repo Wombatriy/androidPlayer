@@ -138,6 +138,10 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [x] Improve sample resolution to one amplitude bucket per **50 ms** instead of 512 buckets for the whole track
 - [x] Persist version-2 waveform cache atomically, up to ~30 KB for 25-minute songs; old low-resolution cache is recalculated once
 - [x] Eliminate periodic waveform shimmer by anchoring drawn peak groups to **absolute 50ms audio bins**, instead of regrouping around the moving viewport
+- [x] Animate the visible waveform at display refresh (vsync), sampling ExoPlayer's live media position rather than stepping with the 120ms Player UI ticker
+- [x] Stop frame scheduling during pause/buffering, when Player is hidden, while scrubbing (waveform or full SeekBar), and on Activity teardown
+- [x] Keep playback-rate changes, A–B loop seeks and other position discontinuities in sync with the actual media clock
+- [x] Add JVM regression tests that reject stale 120ms ticker positions during playback and enforce pause/visibility/seekbar gating
 - [x] Add generous space between waveform, full-track SeekBar and transport buttons to reduce accidental +10s/−10s presses
 - [x] Add regression tests proving the same audio bins retain their identities, heights and smooth X translation as the viewport moves
 - [x] Show only a configurable local window around playback (**±10 seconds by default**, see `WaveformView.WINDOW_RADIUS_SECONDS`), now with taller 176dp display

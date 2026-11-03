@@ -458,6 +458,31 @@ For example, `5L` shows 10 seconds in total; `15L` shows 30 seconds.
   Playlists and Queue. `TabSwipeNavigator` explicitly excludes
   `WaveformView` to avoid any conflict.
 
+### Smooth animation while music plays
+
+In the prior preview the audio waveform moved only when the Player UI ticker
+updated (roughly every **120 ms**, about 8 frames per second). Even after
+eliminating the changing peak heights, that looked like a regularly jumping
+waveform during ordinary playback.
+
+**WaveformView now animates independently on display vsync** (typically up
+to 60 frames per second), reading `PlaybackController.currentPosition`
+directly from ExoPlayer's live media clock. The ordinary seekbar, BPM text
+and remaining Player UI keep their low-frequency update rate.
+
+A coarse ticker update can no longer overwrite a newer position from the
+live media clock. The renderer follows the real track speed, seek operations
+and A–B jumps, without guessing time or starting a separate playback timer.
+
+Frame requests stop as soon as ExoPlayer is paused/buffering, the Player tab
+is hidden, the window is detached, or the Activity closes. Touch-scrubbing
+the waveform and dragging the full-track SeekBar also temporarily suppress
+the animation so the finger controls the preview. On release or playback
+resumption the live media clock becomes authoritative again.
+
+New JVM tests cover old tick vs. newer media clock, pause and scrubbing
+positions, and visibility/lifecycle conditions for enabling vsync animation.
+
 ### Stability and touch spacing
 
 The waveform was enlarged from **112 dp to 176 dp** and given dedicated
@@ -520,6 +545,15 @@ Even when a waveform cannot be generated, playback is unaffected.
    heights or visibly rebuilding at regular intervals.
 10. Try precise seeking near waveform, full-track slider and transport
     buttons: increased spacing should prevent accidental +10s/−10s actions.
+11. Play a track at 1.0× and 0.7×, watch waveform movement for several
+    seconds: no regular 120ms steps; peaks should move continuously.
+12. Pause the song: waveform must become completely still. Resume playback,
+    switch to Library, then return to Player: animation should restart only
+    when Player is visible and audio is playing.
+13. Move the full-track SeekBar and scrub the zoomed waveform while playing:
+    both respond to the finger, without fighting the frame animation.
+14. Try an A–B loop: the waveform must move smoothly between A and B and
+    jump to A precisely when ExoPlayer seeks back.
 
 Android Back, MediaSessionService and background playback remain stage 09.
 GitHub Actions is manual-only and was not run automatically.
