@@ -40,11 +40,29 @@ class WaveformCoordinator(
         }
         onChanged(null, "Generating waveform…")
         executor.execute {
+            // Java Thread.MIN_PRIORITY alone does not always lower Android's
+            // Linux scheduler priority for MediaCodec work. Be explicit.
+            runCatching {
+                android.os.Process.setThreadPriority(
+                    android.os.Process.THREAD_PRIORITY_BACKGROUND
+                )
+            }
             val result = runCatching {
-                cache.read(uri, durationHintMs) ?: decoder.analyze(uri) {
-                    closed || generation.get() != token ||
-                        Thread.currentThread().isInterrupted
-                }.also { waveform ->
+                cache.read(uri, durationHintMs) ?: decoder.analyze(
+                    uri = uri,
+                    cancelled = {
+                        closed || generation.get() != token ||
+                            Thread.currentThread().isInterrupted
+                    },
+                    onProgress = { percent ->
+                        main.post {
+                            if (!closed && generation.get() == token &&
+                                selectedUri == uri) {
+                                onChanged(null, "Generating waveform… $percent%")
+                            }
+                        }
+                    }
+                ).also { waveform ->
                     // Cache errors should not discard an otherwise usable waveform.
                     runCatching { cache.write(uri, waveform) }
                 }
