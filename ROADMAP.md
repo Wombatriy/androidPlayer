@@ -119,15 +119,15 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [x] Fourth tab displays the active playback queue (All Tracks or the selected user playlist)
 - [x] Select and play any available queue item without losing source order
 - [x] Synchronize Previous/Next and end-of-track modes with the chosen playback source
-- [x] Long-press-and-drag ≡ handle to reorder a custom playlist directly in Queue, with immediate local persistence
-- [x] All Tracks queue stays read-only and BPM-sorted; custom playlist order is never overwritten by BPM sorting
+- [x] Long-press-and-drag ≡ handle to reorder songs **in Playlists**, alongside existing Move up / Move down actions; save the order immediately
+- [x] Queue stays read-only for every source: it shows the active playing order and allows choosing a track; All Tracks remains BPM-sorted
 - [x] Reorder by URI relative to the drop target so missing files keep their positions in saved playlists
-- [x] Auto-scroll a long Queue near the top/bottom while dragging, highlight the drop target, provide haptic feedback
-- [x] Preserve the currently playing song and its playback position through reorders, update Previous/Next
+- [x] Auto-scroll long playlist editors near the top/bottom while dragging, highlight the drop target, provide haptic feedback
+- [x] Preserve the currently playing song and position when editing its active playlist, update Queue and Previous/Next
 - [x] Gesture navigation: horizontal swipes between Player ↔ Library ↔ Playlists ↔ Queue without crossing boundaries
-- [x] Exclude buttons, seek bars, edit fields, queue drag handles, system Back edges and vertical ListView gestures
+- [x] Exclude buttons, seek bars, edit fields, playlist drag handles, system Back edges and vertical ListView gestures
 - [x] Queue "Current" button jumps to the playing track; active playlist source is shown clearly
-- [x] Refresh the Playlists editor on tab entry so Queue drag edits appear immediately without rebuilding views
+- [x] Refresh the Playlists editor on tab entry so saved playlist edits remain visible without rebuilding views
 - [x] Pure JVM tests for URI-relative reorder and horizontal/vertical swipe discrimination
 - [ ] Verify drag/drop hit zones, long-list auto-scroll and swipe conflicts on a real Android device
 - [ ] Future: Android Back source-aware history once playback is service-owned (stage 09)

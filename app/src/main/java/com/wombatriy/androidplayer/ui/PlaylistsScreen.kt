@@ -1,10 +1,14 @@
 package com.wombatriy.androidplayer.ui
 
 import android.app.AlertDialog
+import android.content.ClipData
 import android.content.Context
 import android.graphics.Color
+import android.os.SystemClock
 import android.text.InputType
 import android.view.Gravity
+import android.view.DragEvent
+import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -34,6 +38,8 @@ class PlaylistsScreen(
     private val onCatalogChanged: (String?) -> Unit
 ) : LinearLayout(context) {
     private data class Row(val uri: String, val track: Track?)
+    private data class DragToken(val playlistId: String, val uri: String)
+    private class RowHolder(val title: TextView, val handle: TextView)
 
     private val chooser = Spinner(context)
     private val chooserAdapter = ArrayAdapter<String>(
@@ -42,10 +48,13 @@ class PlaylistsScreen(
         setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
     }
     private val rows = ArrayList<Row>()
+    private var hoveredRow = -1
+    private var lastAutoScrollAt = 0L
     private val listAdapter = PlaylistRowsAdapter()
     private val tracksList = ListView(context).apply {
         dividerHeight = context.dp(1)
         adapter = listAdapter
+        setOnDragListener { _, event -> handleDrag(event) }
         setOnItemClickListener { _, _, index, _ -> play(index) }
         setOnItemLongClickListener { _, _, index, _ ->
             showTrackActions(index)
@@ -159,6 +168,62 @@ class PlaylistsScreen(
         onPlayTrack(chosen, playlist, playable)
     }
 
+    /**
+     * Dragging only edits this playlist's saved URI order. The current playing
+     * song and playback position are never changed by a reordering.
+     */
+    private fun handleDrag(event: DragEvent): Boolean {
+        val token = event.localState as? DragToken
+        val playlistId = activePlaylist?.id ?: return false
+        when (event.action) {
+            DragEvent.ACTION_DRAG_STARTED -> {
+                highlightRow(-1)
+                return token != null && token.playlistId == playlistId
+            }
+            DragEvent.ACTION_DRAG_LOCATION -> {
+                if (token == null || token.playlistId != playlistId) return false
+                highlightRow(tracksList.pointToPosition(event.x.toInt(), event.y.toInt()))
+                val now = SystemClock.uptimeMillis()
+                if (now - lastAutoScrollAt >= 160L) {
+                    val edge = context.dp(56)
+                    val direction = when {
+                        event.y < edge -> -1
+                        event.y > tracksList.height - edge -> 1
+                        else -> 0
+                    }
+                    if (direction != 0) {
+                        tracksList.smoothScrollBy(direction * context.dp(66), 140)
+                        lastAutoScrollAt = now
+                    }
+                }
+                return true
+            }
+            DragEvent.ACTION_DROP -> {
+                highlightRow(-1)
+                if (token == null || token.playlistId != playlistId) return false
+                val from = rows.indexOfFirst { it.uri == token.uri }
+                val to = tracksList.pointToPosition(event.x.toInt(), event.y.toInt())
+                if (from < 0 || to !in rows.indices || from == to) return false
+                val moved = store.moveRelative(
+                    playlistId, token.uri, rows[to].uri, from < to
+                )
+                if (moved) changed(playlistId)
+                return moved
+            }
+            DragEvent.ACTION_DRAG_ENDED -> {
+                highlightRow(-1)
+                return true
+            }
+        }
+        return true
+    }
+
+    private fun highlightRow(index: Int) {
+        if (hoveredRow == index) return
+        hoveredRow = index
+        listAdapter.notifyDataSetChanged()
+    }
+
     private fun showTrackActions(index: Int) {
         val playlist = activePlaylist ?: return
         val row = rows.getOrNull(index) ?: return
@@ -248,13 +313,14 @@ class PlaylistsScreen(
         val offset = tracksList.getChildAt(0)?.top ?: 0
         rows.clear()
         playlist?.trackUris?.forEach { uri -> rows.add(Row(uri, resolve(uri))) }
+        hoveredRow = -1
         listAdapter.notifyDataSetChanged()
         val newIndex = rows.indexOfFirst { it.uri == anchor }
         if (newIndex >= 0) tracksList.post { tracksList.setSelectionFromTop(newIndex, offset) }
         help.text = when {
             playlist == null -> "Create a playlist, then add tracks from Library."
             rows.isEmpty() -> "Empty playlist. Long-press a Library track to add it."
-            else -> "${rows.size} tracks in saved order · tap to play · hold to move/remove"
+            else -> "${rows.size} tracks in saved order · drag ≡ or hold row for options"
         }
     }
 
@@ -267,22 +333,58 @@ class PlaylistsScreen(
         override fun getItemId(position: Int): Long = position.toLong()
 
         override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-            val label = (convertView as? TextView) ?: TextView(context).apply {
-                textSize = 15f
-                gravity = Gravity.CENTER_VERTICAL
-                minimumHeight = context.dp(52)
-                setPadding(context.dp(10), context.dp(6), context.dp(10), context.dp(6))
-                maxLines = 2
+            val row: LinearLayout
+            val holder: RowHolder
+            if (convertView is LinearLayout && convertView.tag is RowHolder) {
+                row = convertView
+                holder = row.tag as RowHolder
+            } else {
+                row = LinearLayout(context).apply {
+                    orientation = HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    minimumHeight = context.dp(56)
+                }
+                val title = TextView(context).apply {
+                    textSize = 15f
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(context.dp(10), context.dp(6), context.dp(4), context.dp(6))
+                    maxLines = 2
+                }
+                val handle = TextView(context).apply {
+                    text = "≡"
+                    textSize = 28f
+                    gravity = Gravity.CENTER
+                    contentDescription = "Long press and drag to reorder playlist"
+                    tag = "playlist-drag-handle"
+                    isLongClickable = true
+                }
+                row.addView(title, LayoutParams(0, -2, 1f))
+                row.addView(handle, LayoutParams(context.dp(52), context.dp(54)))
+                holder = RowHolder(title, handle)
+                row.tag = holder
             }
             val item = getItem(position)
-            label.text = if (item.track != null) {
+            row.setBackgroundColor(
+                if (position == hoveredRow) Color.rgb(221, 246, 241)
+                else Color.TRANSPARENT
+            )
+            holder.title.text = if (item.track != null) {
                 "${position + 1}.  ${item.track.name}"
             } else {
                 "${position + 1}.  Unavailable: ${item.uri.substringAfterLast('/')}"
             }
-            label.setTextColor(if (item.track != null) Color.rgb(31, 37, 43)
-                else Color.rgb(154, 85, 67))
-            return label
+            holder.title.setTextColor(
+                if (item.track != null) Color.rgb(31, 37, 43)
+                else Color.rgb(154, 85, 67)
+            )
+            holder.handle.setOnLongClickListener {
+                val id = activePlaylist?.id ?: return@setOnLongClickListener false
+                val token = DragToken(id, item.uri)
+                val clip = ClipData.newPlainText("playlist", "")
+                it.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                it.startDragAndDrop(clip, View.DragShadowBuilder(row), token, 0)
+            }
+            return row
         }
     }
 }

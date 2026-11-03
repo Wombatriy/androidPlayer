@@ -180,10 +180,6 @@ class MainActivity : Activity() {
             onChooseTrack = { index ->
                 if (!renameFlow.busy) playback.playQueueIndex(index)
                 else Toast.makeText(this, "Finish renaming first", Toast.LENGTH_SHORT).show()
-            },
-            onReorder = { moving, target, after ->
-                if (renameFlow.busy) false
-                else playlists.reorderActive(moving, target, after)
             }
         )
         pages = listOf(playerScreen, libraryScreen, playlistsScreen, queueScreen)

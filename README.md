@@ -383,53 +383,53 @@ Full background playback, Android Back navigation, drag-and-drop Queue
 reordering and lock-screen controls remain on the later roadmap.
 GitHub Actions is still **manual-only**, to avoid build notification spam.
 
-## Iteration 07 — Queue drag/drop and swipe navigation
+## Iteration 07 — playlist drag/drop and swipe navigation
 
-The Queue tab shows the current playback source. User playlists are
-**directly editable**: hold the **≡** handle on the right side of a Queue row,
-drag onto another song and release. A drag downward inserts **after** the
-drop target; a drag upward inserts **before** it. A short haptic confirmation
-signals the drag start, the intended drop row is highlighted and holding near
-the top/bottom scrolls longer queues.
+**All editing lives in Playlists; Queue is a playback view.**
 
-Moves update the same **ordered URI list** stored by Playlists; there is no
-new temporary queue copy and no copying/reordering of audio files. The playlist
-editor shows the updated order when opened. Unavailable/missing songs keep
-their stored relative positions. Previous/Next follow the updated list, but
-**the current track keeps playing without restarting**.
+The **Playlists** tab now displays a **≡** drag handle on the right side of
+every song. Long-press the handle, drag onto another song and release. Moving
+downward inserts after the drop target; moving upward inserts before it.
+A haptic indication confirms the drag start, the drop row is highlighted,
+and holding near the top/bottom automatically scrolls long playlists.
 
-**All Tracks** is still the BPM-sorted virtual Library playlist: it cannot be
-dragged or reordered manually, so Queue shows no handles in that mode.
+**Long-press the song row itself** for the existing Play / Move up /
+Move down / Remove actions. Both forms of reordering update the same
+persistent URI list. Missing/unavailable songs retain their order and can
+also be moved or removed. No audio is copied, sorted by BPM or modified.
 
-The **Current** button in Queue jumps to the playing row. Changing sources
-automatically scrolls the Queue to the current track. Edits preserve the
-visible list anchor rather than jumping to the top.
+If the edited playlist is the active playback source, Queue/Previous/Next
+update immediately without restarting the song being played. If it isn't
+the active source, only that playlist changes; the playback queue is untouched.
+
+**Queue is read-only for order**: it displays the active source (All Tracks
+or a named playlist) and allows tapping a song to play. It has **no drag
+handles or reorder controls**. Its **Current** button scrolls to the playing
+song; source changes jump to the current song, while ordinary updates
+preserve the visible anchor.
 
 ### Swipe between tabs
 
-Swipe **left** to advance Player → Library → Playlists → Queue, or **right**
-to return. Swipes do **not** wrap around the first/last tab. A swipe must
-travel at least about 84 dp horizontally, dominate vertical movement and
-complete within 650 ms. Vertical list scrolling remains unchanged; gesture
-navigation is intentionally disabled when the touch begins on buttons,
-seekbars, text inputs, dropdowns, drag handles or within the Android system
-Back-gesture edge area.
+Swipe left/right over non-interactive content to change neighboring tabs:
+Player ↔ Library ↔ Playlists ↔ Queue. Swipes don't wrap at the edges.
+Gestures must travel about 84 dp horizontally and finish within 650 ms.
+Vertical list scrolling, buttons, SeekBars, text input, dropdowns and
+**Playlists drag handles** are excluded, as are the Android Back edges.
 
 ### Phone verification
-1. Create playlist "Test" with tracks A, B, C, D; play B.
-2. In Queue, long-press ≡ for D and drop it on B: saved order should
-   become A, D, B, C. Music B must not restart.
-3. Drag A downward past C and confirm Next/Previous use the new order.
-4. Switch to Playlists: its saved track order must match Queue; fully restart
-   the app to verify persistence.
-5. In All Tracks, Queue must show **no drag handles**, and detected BPM
-   updates should still control its ordering.
-6. Drag near Queue top/bottom on a long playlist: test auto-scrolling.
-7. Swipe between tabs over a song row and empty header space; ensure a
-   horizontal swipe does not accidentally play the touched song.
-8. Scroll Library/Queue vertically and adjust Player seek/speed bars:
-   these gestures must not switch tabs. Test system edge Back gestures too.
-9. Tap Current in Queue to jump to the selected track.
+1. Create a user playlist A–B–C–D, play B, then in **Playlists** drag
+   D above B: the order should be A–D–B–C. B keeps playing continuously.
+2. Use long-press **Move up / Move down** on the song row. Both methods
+   must change the same saved playlist order.
+3. Switch to **Queue**. It reflects the new order and has **no ≡ handles**.
+   Previous/Next follow the new order; Current jumps to B.
+4. Restart the app and check the saved order in Playlists.
+5. Edit a non-playing playlist: the active playback Queue doesn't change.
+6. Drag an unavailable track and drag near the edge of a long playlist;
+   confirm reorder, row highlighting and auto-scroll.
+7. Swipe between all four tabs, and separately use the seekbar, speed ruler,
+   buttons, vertical scrolling and the system Back-edge gesture.
+   No accidental tab switch or song selection should occur.
 
-MediaSessionService, reliable background playback and source-aware Android
-Back navigation remain stage 09. GitHub Actions remains manual-only.
+Background playback and Android Back behavior remain in stage 09.
+GitHub Actions is manual-only and must not be automatically dispatched.

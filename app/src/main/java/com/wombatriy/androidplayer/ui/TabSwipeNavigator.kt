@@ -81,7 +81,7 @@ class TabSwipeNavigator(private val activity: Activity) {
         while (target != null) {
             if (target is Button || target is ImageButton ||
                 target is SeekBar || target is EditText || target is Spinner ||
-                target.tag == "queue-drag-handle") return false
+                target.tag == "playlist-drag-handle") return false
             target = target.parent as? View
         }
         return true

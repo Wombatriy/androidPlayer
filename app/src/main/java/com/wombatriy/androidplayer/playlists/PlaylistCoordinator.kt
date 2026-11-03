@@ -50,17 +50,6 @@ class PlaylistCoordinator(
         }
     }
 
-    /**
-     * Only user playlists are editable; the virtual All Tracks list stays
-     * deterministically sorted by BPM. Playback is not restarted.
-     */
-    fun reorderActive(movingUri: String, targetUri: String, afterTarget: Boolean): Boolean {
-        val id = playback.activePlaylistId ?: return false
-        val changed = store.moveRelative(id, movingUri, targetUri, afterTarget)
-        if (changed) onPlaylistChanged(id)
-        return changed
-    }
-
     fun onTrackRenamed(before: Track, after: Track, tracks: List<Track>, restart: Boolean) {
         store.replaceUri(before.uri.toString(), after.uri.toString())
         available = tracks.associateBy { it.uri.toString() }
