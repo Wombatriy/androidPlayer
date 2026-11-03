@@ -27,7 +27,8 @@ import com.wombatriy.androidplayer.library.LibraryRepository
 import com.wombatriy.androidplayer.playlists.PlaylistCoordinator
 import com.wombatriy.androidplayer.player.PlaybackController
 import com.wombatriy.androidplayer.player.MusicPlaybackService
-import com.wombatriy.androidplayer.player.BackNavigationPolicy
+import com.wombatriy.androidplayer.ui.BackNavigationPolicy
+import com.wombatriy.androidplayer.player.LocalBindAuth
 import com.wombatriy.androidplayer.ui.LibraryScreen
 import com.wombatriy.androidplayer.ui.PlayerScreen
 import com.wombatriy.androidplayer.ui.PlaylistsScreen
@@ -189,6 +190,7 @@ class MainActivity : Activity() {
         })
         val bindIntent = Intent(this, MusicPlaybackService::class.java).apply {
             action = MusicPlaybackService.ACTION_LOCAL_BIND
+            putExtra(MusicPlaybackService.EXTRA_LOCAL_BIND_TOKEN, LocalBindAuth.token(this@MainActivity))
         }
         serviceBound = bindService(bindIntent, connection, Context.BIND_AUTO_CREATE)
         if (!serviceBound) {
