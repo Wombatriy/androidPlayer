@@ -369,8 +369,8 @@ class WaveformView(
     /**
      * Immediate fallback for uncovered windows during a fast swipe/seek.
      * No bitmap allocation, decoder, Path, or per-bar Canvas call occurs.
-     * The same absolute 50ms groups and stroke width as the background
-     * bitmap are used, so switching from preview to ready tile is stable.
+     * Render a continuous one-column-per-pixel envelope that visually
+     * matches the off-thread bitmap's filled waveform.
      */
     private fun drawTemporaryPeaks(
         canvas: Canvas,
@@ -383,29 +383,31 @@ class WaveformView(
         val peaks = waveform?.levels ?: return
         if (window.lengthMs <= 0L || peaks.isEmpty()) return
         val widthPx = rightPx - leftPx
-        val groupSize = WaveformMath.drawGroupSize(window, widthPx.toInt())
-        val needed = ((widthPx.toInt().coerceAtLeast(1) + 4) * 4)
+        val columns = widthPx.toInt().coerceAtLeast(1)
+        val needed = columns * 4
         if (fallbackSegments.size < needed) fallbackSegments = FloatArray(needed)
+        val msPerPixel = window.lengthMs.toDouble() / columns
         var n = 0
-        for (first in WaveformMath.visibleGroupStarts(window, peaks.size, groupSize)) {
-            if (n + 4 > fallbackSegments.size) break
-            val last = (first + groupSize - 1).coerceAtMost(peaks.lastIndex)
-            var peak = 0
-            for (index in first..last) peak = maxOf(peak, peaks[index].toInt() and 255)
-            val centerTimeMs = (first.toLong() + (last - first + 1) / 2.0) *
-                WaveformMath.BIN_DURATION_MS
-            val x = leftPx + ((centerTimeMs - window.startMs).toDouble() *
-                widthPx / window.lengthMs).toFloat()
+        for (column in 0 until columns) {
+            val fromMs = window.startMs + column * msPerPixel
+            val toMs = minOf(window.endMs.toDouble(), fromMs + msPerPixel)
+            val peak = WaveformMath.peakForPixel(peaks, fromMs, toMs)
             val halfHeight = max(1f, amplitudePx * peak / 255f)
+            // One solid pixel column per sample, exactly as in the
+            // background raster. No partially transparent gaps between
+            // isolated peaks as the timeline moves under the finger.
+            val x = leftPx + column + 0.5f
             fallbackSegments[n++] = x
             fallbackSegments[n++] = centerY - halfHeight
             fallbackSegments[n++] = x
             fallbackSegments[n++] = centerY + halfHeight
         }
-        val strokeWidth = max(1f,
-            WaveformMath.BIN_DURATION_MS * groupSize * widthPx / window.lengthMs * 0.82f)
-        mutedFallbackPaint.strokeWidth = strokeWidth
-        playedFallbackPaint.strokeWidth = strokeWidth
+        mutedFallbackPaint.strokeWidth = 1f
+        playedFallbackPaint.strokeWidth = 1f
+        mutedFallbackPaint.strokeCap = Paint.Cap.BUTT
+        playedFallbackPaint.strokeCap = Paint.Cap.BUTT
+        mutedFallbackPaint.isAntiAlias = false
+        playedFallbackPaint.isAntiAlias = false
         val progressPx = WaveformMath.progressSplitX(
             xFor(displayedPosition(), window), leftPx, rightPx
         )
