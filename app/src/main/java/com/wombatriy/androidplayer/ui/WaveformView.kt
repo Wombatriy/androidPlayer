@@ -8,6 +8,7 @@ import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import com.wombatriy.androidplayer.waveform.WaveformAnimationPolicy
 import com.wombatriy.androidplayer.waveform.WaveformData
 import com.wombatriy.androidplayer.waveform.WaveformMath
 import kotlin.math.abs
@@ -74,10 +75,12 @@ class WaveformView(
         }
     }
 
-    private fun canAnimate(): Boolean =
-        !stopped && isAttachedToWindow && isShown &&
-            !tracking && !externalScrubbing && waveform != null &&
-            durationMs > 0L && playbackRunning()
+    private fun canAnimate(): Boolean = WaveformAnimationPolicy.shouldAnimate(
+        playing = playbackRunning(),
+        visible = !stopped && isAttachedToWindow && isShown,
+        hasWaveform = waveform != null && durationMs > 0L,
+        interactionBlocked = tracking || externalScrubbing
+    )
 
     private fun scheduleFrame() {
         if (!frameScheduled && canAnimate()) {
@@ -156,9 +159,14 @@ class WaveformView(
         // Ignore the coarse (~120 ms) ticker position during normal playback.
         // A stale ticker value must never snap the smooth animated timeline.
         if (!tracking) {
-            positionMs = if (!externalScrubbing && playbackRunning()) {
-                playbackPosition().coerceAtLeast(0L)
-            } else position.coerceAtLeast(0L)
+            val playing = playbackRunning()
+            val live = if (playing && !externalScrubbing) playbackPosition() else position
+            positionMs = WaveformAnimationPolicy.choosePosition(
+                tickerMs = position,
+                liveMediaClockMs = live,
+                playing = playing,
+                seekbarScrubbing = externalScrubbing
+            )
         }
         if (oldPosition != positionMs || oldDuration != durationMs) invalidate()
         refreshAnimationState()
