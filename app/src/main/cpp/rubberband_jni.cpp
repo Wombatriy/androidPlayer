@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 BPM Player contributors
+// Glue code, separate from the upstream Rubber Band 4.0.0 source.
+
 #include <jni.h>
 #include <rubberband/RubberBandStretcher.h>
 

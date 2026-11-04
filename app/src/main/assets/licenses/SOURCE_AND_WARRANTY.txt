@@ -1,0 +1,32 @@
+BPM PLAYER — SOURCE CODE, COPYRIGHT AND WARRANTY
+
+Copyright (C) 2026 BPM Player contributors.
+BPM Player is free software. You may redistribute it and/or modify it
+under the terms of the GNU General Public License, version 3 or (at your
+option) any later version.
+
+BPM Player is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU GPL
+for more details.
+
+Project source repository:
+https://github.com/Wombatriy/androidPlayer
+
+For the complete corresponding source of the EXACT binary you received:
+  1. Locate the release version and source revision displayed in About.
+  2. Open the release page in the GitHub repository for that version.
+  3. Download the full "corresponding source" ZIP containing the exact
+     BPM Player revision, the pinned Rubber Band 4.0.0 sources, source
+     notices, and build / installation scripts.
+  4. You are entitled to the rights described in the GNU GPL.
+
+IMPORTANT: The ZIP must actually be uploaded for EACH distributed binary.
+A plain GitHub source tree is not the complete corresponding source for
+an APK containing Rubber Band, because the native library is checked
+out separately. The release must not be sent before the source package
+is accessible to recipients on GPL-compliant terms.
+
+Licence: GPL-3.0-or-later
+Rubber Band: GPL-2.0-or-later (used under GPLv3 for this distribution)
+Other dependencies: see Third-party notices.

@@ -221,7 +221,10 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [x] Prepare locally signed R3 release APK with keystore outside Git and passwords in temporary environment variables
 - [x] Increment versionCode and keep signing key reusable for subsequent updates
 - [x] Explain Google Play Protect scanning/unknown-source limitations and Google Play internal testing
-- [ ] Confirm GPL-compatible licence and complete corresponding-source package **before distributing R3 APK to friends**
+- [x] Adopt GPL-3.0-or-later for original BPM Player sources, preserve Rubber Band's GPL-2.0-or-later and Apache-2.0 notices
+- [x] Add accessible in-app legal notices and a source revision embedded into release builds
+- [x] Add complete corresponding-source packaging with exact app SHA and pinned native Rubber Band source
+- [ ] Verify copyright ownership, audit transitive licences and **publish** complete source package before distributing R3 APKs
 - [ ] Build signed APK on Windows Android Studio and check install with Play Protect enabled
 - [ ] Test UI readability and tabs on phone; preserve waveform and playback behavior
 
@@ -252,8 +255,9 @@ Past experiment: Android platform mixer produced audible crackles and was remove
 ## Pre-release Library maintenance
 - [x] Library Current jumps to the playing track without changing playback
 - [x] Confirmed SAF delete of actual file plus playlist/queue/cache cleanup
-- [x] Exclude action uses a separate writable parent SAF grant to create sibling excluded/
-- [x] Stream-and-verify copy using SHA-256 **before** deleting the original
-- [x] Purge BPM and waveform caches for removed tracks and skip excluded/ in recursive scans
+- [x] Exclude accepts an existing, user-selected destination folder directly (no parent-folder requirement)
+- [x] Saved exclusion destination can be changed at any time; legacy invalid parent setting is ignored
+- [x] Stream-and-verify copy using SHA-256 before deleting the original
+- [x] Purge BPM and waveform caches for removed tracks; skip named excluded/ and configured destinations by SAF identity
 - [x] JVM unit tests for queue deletion and excluded directory policy
-- [ ] Validate on Android phone with throwaway MP3/FLAC files and permission denial cases
+- [ ] Verify destination selection, repeated exclusions and rescan on disposable files on Android

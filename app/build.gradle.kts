@@ -13,6 +13,19 @@ val useRubberBand = providers.gradleProperty("rubberband").orNull?.let {
     }
 } ?: true
 
+// Each distributed release must identify the precise public source commit.
+// Debug builds use "development" and can continue to build without extra flags.
+val sourceRevision = providers.gradleProperty("sourceRevision").orNull ?: "development"
+require(sourceRevision == "development" || Regex("[a-f0-9]{40}").matches(sourceRevision)) {
+    "sourceRevision must be a lowercase 40-character Git SHA"
+}
+val releaseTaskRequested = gradle.startParameter.taskNames.any {
+    it.contains("Release", ignoreCase = true)
+}
+if (releaseTaskRequested && sourceRevision == "development") {
+    error("Release requires -PsourceRevision=<40-character-Git-SHA>. Use tools/release/build-release.ps1.")
+}
+
 // Never store signing secrets in Gradle files or version control.
 val releaseKeyStore = providers.environmentVariable("ANDROID_RELEASE_KEYSTORE").orNull
 val releaseStorePassword = providers.environmentVariable("ANDROID_RELEASE_STORE_PASSWORD").orNull
@@ -41,6 +54,7 @@ android {
         versionName = "1.0.0-rc1"
 
         buildConfigField("boolean", "WITH_RUBBERBAND", useRubberBand.toString())
+        buildConfigField("String", "SOURCE_REVISION", "\"$sourceRevision\"")
         if (useRubberBand) {
             // First native experiment: modern 64-bit Android phones only.
             ndk { abiFilters.add("arm64-v8a") }

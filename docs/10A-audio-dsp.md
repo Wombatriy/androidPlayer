@@ -163,10 +163,13 @@ the exact Rubber Band release plus all modifications and build scripts.
 A public release also needs compatible third-party notices. Alternatively,
 purchase an appropriate commercial licence.
 
-This branch intentionally does **not** relicense your pre-existing app
-source or bundle third-party source code into the Git repository. You must
-approve that release/licence decision before distributing R3-enabled APKs.
-The ordinary Sonic APK has no new Rubber Band licence obligations.
+A subsequent open-source compliance PR adds a GNU GPLv3-or-later grant
+for original BPM Player source and a complete-source packaging script.
+The pinned third-party Rubber Band checkout remains gitignored in
+the ordinary repository and is included separately in the generated
+corresponding-source release ZIP. Do not distribute R3 binaries until
+the distribution checklist is completed. The Sonic APK does not include
+the native Rubber Band component.
 
 ## 10B: R3 default + signed release
 

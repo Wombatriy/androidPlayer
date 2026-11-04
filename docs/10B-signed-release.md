@@ -20,9 +20,17 @@ Build a locally signed arm64 R3 release APK:
 
     .\tools\release\build-release.ps1
 
-The script prompts securely for the keystore password, then builds
-`app:assembleRelease`. The resulting APK is copied to
-`dist/AndroidPlayer-1.0.0-rc1-r3-arm64.apk` (ignored by Git).
+For an upload-signed Google Play **AAB** instead:
+
+    .\tools\release\build-release.ps1 -Bundle
+
+The script prompts for the keystore password, builds the release,
+embeds the precise clean Git commit SHA and creates both the binary and
+matching corresponding-source ZIP in `dist/`.
+Outputs are named `BPM_Player-1.0.0-rc1-r3-arm64.apk` (or `.aab`)
+and `BPM_Player_corresponding-source_<SHA>.zip`.
+The ZIP includes the full pinned Rubber Band source tree. It must be
+published with the matching release before distribution.
 
 `versionCode` is incremented to 2, `versionName` is 1.0.0-rc1.
 Future updates must increment `versionCode` and use the SAME signing key.
@@ -54,27 +62,29 @@ References:
 - https://developers.google.com/android/play-protect/warning-dev-guidance
 - https://support.google.com/googleplay/android-developer/answer/9845334
 
-## Rubber Band licence checklist BEFORE sharing with friends
+## Open-source and corresponding-source checklist
 
-Rubber Band R3 v4.0.0 is **GPL-2.0-or-later** or commercially licensed.
-The bundled R3 APK is a combined application. Sharing it with even a few
-friends counts as distribution. This repository has NOT yet been relicensed.
+Original BPM Player source is offered under **GPL-3.0-or-later**.
+Rubber Band R3 is licensed under **GPL-2.0-or-later**, which allows GPLv3
+for the combined work. AndroidX/Media3 and Kotlin retain Apache 2.0.
 
-Before sharing with friends, either:
+Read [the complete release checklist](OPEN_SOURCE_RELEASE.md). In
+particular, before distributing an APK/AAB to friends or publishing
+through Google Play:
 
-1. Select an appropriate GPL-compatible open-source licence for the
-   **entire combined application** (for example GPL-3.0-or-later, subject
-   to reviewing ownership and third-party dependencies); include licence
-   notices, copyright statements and all corresponding source code
-   (including official Rubber Band release and build scripts) for the
-   recipients, and convey their rights to modify/redistribute; or
-2. Acquire an appropriate Rubber Band commercial licence and distribute
-   in compliance with all other dependencies.
+1. Verify ownership/right to relicense every contribution and inspect
+   transitive third-party licence requirements.
+2. Build from a clean Git tree with pinned official Rubber Band 4.0.0.
+3. Create and verify the matching full corresponding-source ZIP with
+   `package-corresponding-source.ps1` (included automatically by
+   `build-release.ps1`).
+4. Publish the source package under GPL-compatible conditions together
+   with the corresponding binary, preserving original licence notices
+   and the recipients' rights.
+5. Verify that About & licences displays the exact source revision,
+   the GNU GPL, third-party notices and source instructions.
 
-Do not merely tell recipients to "find the GPL code online"; prepare a
-complete, reproducible source release or another GPL-compliant offer.
-Verify the precise licence and source-distribution obligations for the
-chosen release path. This document is not legal advice.
-
-Until that decision is made, use this APK only for **private testing
-on your own devices**.
+Creating the ZIP alone is **not** public source delivery. Do not send
+the R3 binary until the source package is actually accessible to its
+recipients and the applicable GPL conditions are met.
+This is release engineering guidance, not legal advice.
