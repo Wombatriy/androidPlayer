@@ -40,7 +40,7 @@ listening volume. Check cymbal decay, percussion attacks, walking bass, brass
 vibrato, vocals and swing feel. These rendered WAVs reveal processing
 artifacts, but cannot prove realtime CPU suitability on a particular phone.
 
-## Next integration increment: opt-in native Rubber Band R3
+## Implemented: opt-in native Rubber Band R3
 
 1. Select GPL or commercial licensing first. Do not automatically bundle
    third-party GPL sources in a distributable APK.
@@ -88,3 +88,81 @@ Official documentation:
 10C — No new clicks, repeated samples, output lag, dropped frames, CPU spikes,
 background crashes or waveform clock regressions.
 10D — Consider enabling a different default only after measured benefits.
+
+## 10A-native — Direct Android phone test (experimental)
+
+The opt-in R3 implementation now resides in:
+- `RubberBandRenderersFactory`: replaces the usual Media3 AudioSink
+  chain; it does NOT run Sonic after R3 and it disables the Android mixer.
+- `RubberBandPcmProcessor`: frame-aligned PCM16 streaming, end-of-stream
+  draining, clock-duration accounting and native state reset on seek/track.
+- `RubberBandNative` + `rubberband_jni.cpp`: use R3 with realtime
+  processing, fixed-size blocks, start padding and output-delay trimming.
+- `app/src/main/cpp/CMakeLists.txt`: builds the JNI bridge plus the official
+  Rubber Band 4.0.0 single-source compilation unit only on demand.
+- `AudioEngineFactory`: chooses **Sonic** in normal builds and **R3** with
+  `-Prubberband=true`. The Player shows an "R3 • EXPERIMENTAL" label
+  when the native engine is selected.
+
+### Prepare your Windows Android Studio installation
+
+Install **Android NDK (Side by side)** and **CMake** from Android Studio →
+Settings → Languages & Frameworks → Android SDK → SDK Tools. Use an arm64
+phone (most recent Android phones; the initial native build only targets
+`arm64-v8a`).
+
+In PowerShell, from the repository root:
+
+    git switch feature/10a-dsp-foundation
+    git pull origin feature/10a-dsp-foundation
+    .\tools\dsp\prepare-rubberband.ps1
+    .\gradlew.bat :app:assembleDebug -Prubberband=true
+
+The prepare script downloads source from
+`https://github.com/breakfastquay/rubberband.git`, checks out the
+**v4.0.0** tag and verifies pinned commit
+`1d95888bec3ae0a17c0c4af791810d5a63f6bc35`.
+The source stays **gitignored** in
+`app/src/main/cpp/vendor/rubberband`. No binary/native source is fetched
+when building the standard Sonic APK.
+
+Install the resulting
+`app/build/outputs/apk/debug/app-debug.apk` as usual and start playback.
+You should see the **R3 • EXPERIMENTAL** label on Player. Play tracks at
+0.80x, 0.90x, 1.00x and 1.10x; seek, test A–B, lock the screen, use
+Bluetooth and vary the tempo while playing.
+
+To return to Sonic and compare on the same phone, rebuild WITHOUT the
+experimental flag (the same APK path will be replaced):
+
+    .\gradlew.bat :app:assembleDebug
+
+Install the normal build over the experimental app; preferences/library
+should be preserved because the application ID has not changed. Never
+install old and new builds concurrently with the same ID.
+
+### Important experiment caveats
+
+This is a **first real-time JNI prototype**, not a confirmed drop-in Sonic
+replacement. R3 has substantial CPU cost. Some devices may underrun, skip
+audio, fail to decode unusual input PCM, or exhibit initial latency. A–B
+wrap and fast seeks are especially important tests. An APK that compiles
+is NOT proof of glitch-free audio.
+
+If R3 fails to build or sounds worse, use Sonic and share the complete
+Gradle/Logcat error. **Do not merge this prototype until phone testing.**
+
+### Licences before sending R3 APKs
+
+Rubber Band 4.0.0 is GPL-2.0-or-later (unless commercially licensed).
+Private evaluation on your own phone is fine, but **giving the R3 APK to
+friends is distribution**. Before doing so, ensure the app is
+GPL-compatible and recipients can receive its corresponding source, including
+the exact Rubber Band release plus all modifications and build scripts.
+A public release also needs compatible third-party notices. Alternatively,
+purchase an appropriate commercial licence.
+
+This branch intentionally does **not** relicense your pre-existing app
+source or bundle third-party source code into the Git repository. You must
+approve that release/licence decision before distributing R3-enabled APKs.
+The ordinary Sonic APK has no new Rubber Band licence obligations.

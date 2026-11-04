@@ -3,6 +3,10 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// Enable R3 only for a local GPL evaluation APK:
+// ./gradlew :app:assembleDebug -Prubberband=true
+val useRubberBand = providers.gradleProperty("rubberband").orNull == "true"
+
 android {
     namespace = "com.wombatriy.androidplayer"
     compileSdk = 36
@@ -13,6 +17,22 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+
+        buildConfigField("boolean", "WITH_RUBBERBAND", useRubberBand.toString())
+        if (useRubberBand) {
+            // First native experiment: modern 64-bit Android phones only.
+            ndk { abiFilters.add("arm64-v8a") }
+        }
+    }
+
+    buildFeatures { buildConfig = true }
+
+    if (useRubberBand) {
+        externalNativeBuild {
+            cmake {
+                path = file("src/main/cpp/CMakeLists.txt")
+            }
+        }
     }
 
     compileOptions {

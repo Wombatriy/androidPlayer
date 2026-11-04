@@ -1,6 +1,7 @@
 package com.wombatriy.androidplayer.player.audio
 
 import android.content.Context
+import com.wombatriy.androidplayer.BuildConfig
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -20,15 +21,20 @@ import androidx.media3.exoplayer.RenderersFactory
  * waveform synchronization and background transport.
  */
 object AudioEngineFactory {
+    val engineLabel: String
+        get() = if (BuildConfig.WITH_RUBBERBAND) "Rubber Band R3 (experimental)" else "Media3 Sonic"
     @OptIn(markerClass = [UnstableApi::class])
     fun create(
         context: Context,
         customRenderers: RenderersFactory? = null
     ): ExoPlayer {
-        val builder = if (customRenderers == null) {
+        val chosenRenderers = customRenderers ?: if (BuildConfig.WITH_RUBBERBAND) {
+            RubberBandRenderersFactory(context)
+        } else null
+        val builder = if (chosenRenderers == null) {
             ExoPlayer.Builder(context)
         } else {
-            ExoPlayer.Builder(context, customRenderers)
+            ExoPlayer.Builder(context, chosenRenderers)
         }
 
         return builder.build().apply {

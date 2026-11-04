@@ -204,8 +204,11 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [x] Add explicit, tested speed-to-duration ratio and 0.8×–1.1× priority contract
 - [x] Add optional Windows PowerShell offline real-time-mode R3 listening comparison script; no GPL code bundled or downloaded by Android builds
 - [x] Document GPL vs commercial Rubber Band and LGPL SoundTouch choices
-- [ ] Build and test default Sonic playback unchanged on a phone
-- [ ] After licensing route is chosen, implement an opt-in Android NDK + Media3 PCM AudioProcessorChain integration for Rubber Band R3
+- [ ] Build and test Sonic (ordinary APK) and R3 (opt-in APK) on the same phone
+- [x] Implement an opt-in Android NDK + JNI R3 engine and Media3 PCM AudioProcessorChain, gated by -Prubberband=true
+- [x] Keep ordinary APK on unchanged Sonic; separate GPL-source setup pins Rubber Band 4.0.0 and uses a local-only source checkout
+- [ ] Build and listen on an actual arm64 Android phone, assess startup delay, rate changes and crackles
+- [ ] Before distributing any R3-enabled APK to others, choose GPL-compatible app licensing and distribute complete corresponding source, or obtain commercial licensing
 
 ### 10B — A/B listening
 - [ ] Compare known rhythmic tracks at 0.80, 0.85, 0.90, 0.95, 1.05, 1.10

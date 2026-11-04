@@ -847,3 +847,28 @@ No GPL library sources or binaries are included in the Android build, no
 licence change has been made to the app, and GitHub Actions remains manual-only.
 
 Run: ./gradlew :app:assembleDebug :app:testDebugUnitTest
+
+## Stage 10A-native — real-time Rubber Band R3 on Android (opt-in)
+
+A **second, experimental native build** now processes music with Rubber Band
+R3 inside ExoPlayer's AudioSink. Sonic remains the untouched default.
+
+On Windows, install Android NDK/CMake, then:
+
+    .\tools\dsp\prepare-rubberband.ps1
+    .\gradlew.bat :app:assembleDebug -Prubberband=true
+
+This builds an experimental arm64-v8a APK with an `R3 • EXPERIMENTAL`
+indicator on Player. Test at 0.8–1.1 speeds, including A–B looping and
+background playback. To switch back, build without the Gradle flag.
+
+**Before sharing an R3-enabled APK with friends or publishing it**, choose
+and satisfy GPL-2.0-or-later conditions for the *combined app* (including
+source-code availability to recipients), or obtain a Rubber Band commercial
+licence. This change does not itself relicense the app. See
+[docs/10A-audio-dsp.md](docs/10A-audio-dsp.md) for setup, design,
+limitations, GPL guidance and tests.
+
+We have not compiled this Android NDK configuration in the assistant
+environment (SDK/NDK unavailable) and the new native path requires a
+first phone build before the PR can be merged.

@@ -17,6 +17,7 @@ import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
 import com.wombatriy.androidplayer.R
+import com.wombatriy.androidplayer.BuildConfig
 import com.wombatriy.androidplayer.bpm.BpmCoordinator
 import com.wombatriy.androidplayer.player.EndMode
 import com.wombatriy.androidplayer.player.TempoMath
@@ -32,6 +33,11 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
         setPadding(context.dp(16), context.dp(12), context.dp(16), context.dp(24))
     }
     private val nameLabel = context.textLine("Choose a track in Library", 18f)
+    private val audioEngineBadge = context.textLine("R3 • EXPERIMENTAL", 11f).apply {
+        visibility = if (BuildConfig.WITH_RUBBERBAND) View.VISIBLE else View.GONE
+        setTextColor(Color.rgb(132, 87, 12))
+        contentDescription = "Rubber Band R3 real-time audio engine experimental build"
+    }
     private val bpmSummary = context.textLine("BPM: —", 14f)
     private var bpmDialog: AlertDialog? = null
     private var bpmPanel: BpmPanel? = null
@@ -81,6 +87,7 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
         addView(column)
 
         column.addView(nameLabel)
+        column.addView(audioEngineBadge)
         column.addView(bpmSummary)
         column.addView(queueLabel)
         column.addView(errorLabel)
