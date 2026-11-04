@@ -31,6 +31,7 @@ import com.wombatriy.androidplayer.player.PlaybackController
 import com.wombatriy.androidplayer.player.MusicPlaybackService
 import com.wombatriy.androidplayer.ui.BackNavigationPolicy
 import com.wombatriy.androidplayer.player.LocalBindAuth
+import com.wombatriy.androidplayer.ui.LegalInformation
 import com.wombatriy.androidplayer.ui.LibraryScreen
 import com.wombatriy.androidplayer.ui.PlayerPalette
 import com.wombatriy.androidplayer.ui.setTabLook
@@ -244,6 +245,21 @@ class MainActivity : Activity() {
                 })
             }
         }
+        // Legal notices must remain accessible from every tab and offline.
+        val aboutButton = Button(this).apply {
+            text = "ⓘ"
+            textSize = 21f
+            isAllCaps = false
+            minWidth = 0
+            minimumWidth = 0
+            contentDescription = "About BPM Player, licences and source code"
+            setPadding(0, 0, 0, 0)
+            setTabLook(false)
+            setOnClickListener { LegalInformation.show(this@MainActivity) }
+        }
+        nav.addView(aboutButton, LinearLayout.LayoutParams(dp(42), dp(44)).apply {
+            marginStart = dp(2)
+        })
         root.addView(nav)
         root.addView(View(this).apply {
             setBackgroundColor(PlayerPalette.border)

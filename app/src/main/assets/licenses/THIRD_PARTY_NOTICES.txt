@@ -1,0 +1,57 @@
+THIRD-PARTY SOFTWARE AND LICENSING NOTICES
+
+BPM Player (original application sources)
+  Copyright (C) 2026 BPM Player contributors.
+  SPDX-License-Identifier: GPL-3.0-or-later.
+  Licence: GNU General Public License, version 3 or any later version.
+  Complete licence: LICENSE / assets/licenses/GPL-3.0-or-later.txt.
+
+Rubber Band Library 4.0.0 — Particular Programs Ltd.
+  Copyright 2007–2024 Particular Programs Ltd.
+  https://breakfastquay.com/rubberband/
+  https://github.com/breakfastquay/rubberband
+  GPL version 2 or any later version (GPL-2.0-or-later).
+  BPM Player elects GPL version 3 terms for combined GPL distribution.
+  Pinned source revision: 1d95888bec3ae0a17c0c4af791810d5a63f6bc35
+  Android R3 builds compile the upstream single/RubberBandSingle.cpp
+  with our app/src/main/cpp/rubberband_jni.cpp adapter.
+  The official source checkout includes original COPYING and any bundled
+  FFT/resampler component notices (src/ext/kissfft/COPYING and
+  src/ext/speex/COPYING). Keep those intact in source releases.
+  Source distribution: package corresponding full source with the APK/AAB.
+  The standard source repository alone does NOT bundle this native source.
+
+AndroidX Media3 — Android Open Source Project / contributors
+  androidX.media3:media3-exoplayer:1.11.1
+  androidx.media3:media3-session:1.11.1
+  and associated AndroidX Media3 runtime modules
+  License: Apache License, Version 2.0.
+  https://developer.android.com/media/media3
+  Licence text: assets/licenses/Apache-2.0.txt.
+
+AndroidX DocumentFile — Android Open Source Project / contributors
+  androidx.documentfile:documentfile:1.1.0
+  License: Apache License, Version 2.0.
+  https://developer.android.com/jetpack/androidx/releases/documentfile
+
+Kotlin standard library and AndroidX supporting libraries
+  Kotlin 2.2.20: Apache License, Version 2.0.
+  https://kotlinlang.org/
+  AndroidX supporting artifacts: generally Apache 2.0. Verify the exact
+  resolved release runtime dependency graph and any artifact NOTICE files.
+
+Build and test tooling (NOT shipped in the application APK):
+  Android Gradle Plugin 8.10.1 — Apache License 2.0.
+  JUnit 4.13.2 — Eclipse Public License 1.0 (testImplementation only).
+  https://junit.org/junit4/license.html
+  Test dependencies, Gradle, JDK and SDK build tools are not themselves
+  necessarily redistributed in the compiled Android package.
+
+WARNING: This is a direct dependency inventory, not a certified
+software-bill-of-materials. Prior to public release inspect the resolved
+:app:releaseRuntimeClasspath, embedded native code, transitive notices,
+Android SDK/NDK terms, and all library version changes.
+Do not erase copyright notices from upstream source files.
+
+Rubber Band is a trademark/name of its respective owner. No affiliation
+or endorsement is implied.

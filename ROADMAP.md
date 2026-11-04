@@ -221,7 +221,10 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 - [x] Prepare locally signed R3 release APK with keystore outside Git and passwords in temporary environment variables
 - [x] Increment versionCode and keep signing key reusable for subsequent updates
 - [x] Explain Google Play Protect scanning/unknown-source limitations and Google Play internal testing
-- [ ] Confirm GPL-compatible licence and complete corresponding-source package **before distributing R3 APK to friends**
+- [x] Adopt GPL-3.0-or-later for original BPM Player sources, preserve Rubber Band's GPL-2.0-or-later and Apache-2.0 notices
+- [x] Add accessible in-app legal notices and a source revision embedded into release builds
+- [x] Add complete corresponding-source packaging with exact app SHA and pinned native Rubber Band source
+- [ ] Verify copyright ownership, audit transitive licences and **publish** complete source package before distributing R3 APKs
 - [ ] Build signed APK on Windows Android Studio and check install with Play Protect enabled
 - [ ] Test UI readability and tabs on phone; preserve waveform and playback behavior
 

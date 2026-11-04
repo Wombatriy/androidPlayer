@@ -1,5 +1,7 @@
 # BPM Player
 
+**Licence:** GPL-3.0-or-later for original application sources. See [LICENSE](LICENSE), [copyright notes](legal/COPYRIGHT.md), [third-party notices](THIRD_PARTY_NOTICES.txt), and the [source release checklist](docs/OPEN_SOURCE_RELEASE.md). Rubber Band keeps its upstream GPL-2.0-or-later terms; AndroidX/Media3 retain Apache-2.0 terms. Distribution of R3 binaries requires the matching complete source release.
+
 An Android music player designed for DJ practice and future BPM analysis.
 
 ## Iteration 01 — Player foundation
@@ -843,8 +845,10 @@ see [docs/10A-audio-dsp.md](docs/10A-audio-dsp.md) and the optional Windows
 requires FFmpeg and the Rubber Band command-line tool installed separately.
 It is **not** a live DSP implementation in the Android player.
 
-No GPL library sources or binaries are included in the Android build, no
-licence change has been made to the app, and GitHub Actions remains manual-only.
+At the initial 10A planning stage no GPL library was bundled. Since then,
+the native R3 release has been implemented; the open-source compliance PR
+offers original BPM Player code under GPL-3.0-or-later and adds a full native
+source packaging process. GitHub Actions remains manual-only.
 
 Run: ./gradlew :app:assembleDebug :app:testDebugUnitTest
 
@@ -863,12 +867,11 @@ This builds an experimental arm64-v8a APK (R3 is selected by the build flag;
 there is no engine label in Player). Test at 0.8–1.1 speeds, including A–B looping and
 background playback. To switch back, build without the Gradle flag.
 
-**Before sharing an R3-enabled APK with friends or publishing it**, choose
-and satisfy GPL-2.0-or-later conditions for the *combined app* (including
-source-code availability to recipients), or obtain a Rubber Band commercial
-licence. This change does not itself relicense the app. See
-[docs/10A-audio-dsp.md](docs/10A-audio-dsp.md) for setup, design,
-limitations, GPL guidance and tests.
+**Before sharing an R3-enabled APK with friends or publishing it**, satisfy
+the GPL-3.0-or-later app and GPL-2.0-or-later Rubber Band obligations,
+verify third-party licensing, and provide the complete corresponding source
+archive generated for that exact release. See
+[docs/OPEN_SOURCE_RELEASE.md](docs/OPEN_SOURCE_RELEASE.md).
 
 We have not compiled this Android NDK configuration in the assistant
 environment (SDK/NDK unavailable) and the new native path requires a
@@ -938,3 +941,22 @@ restarting or pausing the active track.
 The launcher name and adaptive vector icon now use **BPM Player**. Store listing
 SVG masters, English/Russian descriptions and PNG export script are under
 [`branding/`](branding/). The Android application ID is unchanged.
+
+## Open-source licence and reproducible source package
+
+The original BPM Player application, documentation and artwork under
+contributor ownership are offered under **GPL-3.0-or-later**.
+See `LICENSE` and `legal/COPYRIGHT.md`. The external Rubber Band 4.0.0
+source remains GPL-2.0-or-later; AndroidX and Kotlin remain under their
+respective licences (`THIRD_PARTY_NOTICES.txt`).
+
+Tap **ⓘ** at the top of the app to view licence text, copyright, the
+source revision and source availability information even offline.
+
+For a locally signed R3 APK, run `tools/release/build-release.ps1`.
+For an AAB for Play Console internal testing, use the **`-Bundle`** option.
+The release scripts now embed the exact Git revision and create a
+matching source ZIP containing the **full pinned native Rubber Band source**
+in `dist/`. Read [the release checklist](docs/OPEN_SOURCE_RELEASE.md)
+before sharing any binary: packaging a ZIP does not automatically publish
+it or complete GPL obligations.
