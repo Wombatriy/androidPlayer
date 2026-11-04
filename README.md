@@ -859,8 +859,8 @@ On Windows, install Android NDK/CMake, then:
     .\tools\dsp\prepare-rubberband.ps1
     .\gradlew.bat :app:assembleDebug -Prubberband=true
 
-This builds an experimental arm64-v8a APK with an `R3 • EXPERIMENTAL`
-indicator on Player. Test at 0.8–1.1 speeds, including A–B looping and
+This builds an experimental arm64-v8a APK (R3 is selected by the build flag;
+there is no engine label in Player). Test at 0.8–1.1 speeds, including A–B looping and
 background playback. To switch back, build without the Gradle flag.
 
 **Before sharing an R3-enabled APK with friends or publishing it**, choose
@@ -899,3 +899,36 @@ source-distribution obligations or a commercial licence are satisfied.
 Caution: the previously installed debug build has a **different signature**
 from release; installing release over debug does not preserve existing app
 data automatically. Back up any playlists or settings before uninstalling.
+
+## Stage 10B — fixed Player footer and one-shot playlist Shuffle
+
+The Player has a scrolling audio/waveform area and a **fixed bottom dock**
+containing the playback end mode, A/B marker controls, loop clearing and the
+**BPM adjustments** button. Track and waveform workers do not change the
+dock's position. The engine's experimental badge was removed.
+
+A small persistent app footer displays **Track X of Y** above the
+`N tracks loaded` status. A dedicated fixed-size field in the **lower
+right** shows waveform-generation progress. That field reserves its
+space even when no waveform message is present, preventing visual jumps.
+
+The Playlists tab now adds a **Shuffle** button to its top action row and
+a slightly larger gap above the playlist dropdown. Shuffle is an immediate,
+one-shot **permanent reorder of the current playlist's saved URI list**:
+it is not an end-of-track play mode. Audio files are never moved, and
+unavailable file references remain in the list. If that playlist is
+currently playing, the playback queue order is updated without
+restarting or pausing the active track.
+
+### Device acceptance check
+
+1. Start a track that needs waveform generation. Its status must appear
+   in the bottom-right field without moving the waveform or controls.
+2. Confirm BPM adjustments / mode / A / B / clear-loop remain at the
+   bottom on a small phone and after the waveform finishes.
+3. Confirm Track X of Y moves to the app footer and follows Next/Previous.
+4. In Playlists, tap Shuffle: each playlist gets a new saved order;
+   closing and reopening the app retains it. The current song must
+   continue without restarting if its active playlist is shuffled.
+5. Check drag-and-drop reorder still works after shuffle and other
+   playlists retain their own order.

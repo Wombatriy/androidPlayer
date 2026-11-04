@@ -102,8 +102,8 @@ The opt-in R3 implementation now resides in:
 - `app/src/main/cpp/CMakeLists.txt`: builds the JNI bridge plus the official
   Rubber Band 4.0.0 single-source compilation unit only on demand.
 - `AudioEngineFactory`: chooses **Sonic** in normal builds and **R3** with
-  `-Prubberband=true`. The Player shows an "R3 • EXPERIMENTAL" label
-  when the native engine is selected.
+  `-Prubberband=true`. The engine label was removed from Player to keep
+  its layout compact; the native engine is selected at build time.
 
 ### Prepare your Windows Android Studio installation
 
@@ -129,7 +129,7 @@ when building the standard Sonic APK.
 
 Install the resulting
 `app/build/outputs/apk/debug/app-debug.apk` as usual and start playback.
-You should see the **R3 • EXPERIMENTAL** label on Player. Play tracks at
+The Player does not show a separate R3 label. Play tracks at
 0.80x, 0.90x, 1.00x and 1.10x; seek, test A–B, lock the screen, use
 Bluetooth and vary the tempo while playing.
 

@@ -74,6 +74,34 @@ class PlaylistCatalogTest {
         assertEquals(listOf("content://new", "content://next"), all[0].trackUris)
     }
 
+    @Test fun shufflePersistsPermutationWithoutChangingOtherPlaylists() {
+        var all = PlaylistCatalog.create(base(), "id-2", "Swing")
+        listOf("a", "b", "c", "missing", "d").forEach { uri ->
+            all = PlaylistCatalog.add(all, "id-1", uri)
+        }
+        all = PlaylistCatalog.add(all, "id-2", "other")
+        val before = all[0].trackUris
+        val shuffled = PlaylistCatalog.shuffle(all, "id-1", kotlin.random.Random(42))
+        assertEquals(before.toSet(), shuffled[0].trackUris.toSet())
+        assertEquals(before.size, shuffled[0].trackUris.size)
+        assertNotEquals(before, shuffled[0].trackUris)
+        assertEquals(all[1], shuffled[1])
+        assertEquals("id-1", shuffled[0].id)
+    }
+
+    @Test fun shuffleDoesNotChangeEmptyOrSingleTrackPlaylist() {
+        val empty = base()
+        assertEquals(empty, PlaylistCatalog.shuffle(empty, "id-1"))
+        val single = PlaylistCatalog.add(empty, "id-1", "only")
+        assertEquals(single, PlaylistCatalog.shuffle(single, "id-1"))
+    }
+
+    @Test fun shuffleFailsForMissingPlaylist() {
+        assertThrows(IllegalArgumentException::class.java) {
+            PlaylistCatalog.shuffle(base(), "absent")
+        }
+    }
+
     @Test fun renameAndDeleteDoNotTouchOtherPlaylists() {
         var all = PlaylistCatalog.create(base(), "id-2", "Swing")
         all = PlaylistCatalog.rename(all, "id-1", "Slow jazz")

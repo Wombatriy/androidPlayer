@@ -213,6 +213,11 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 
 ### 10B — Release readiness and visual polish (in PR #13)
 - [x] Rounded primary action buttons, darker slate background, and highlighted navigation tab
+- [x] Remove Player's R3 experimental badge; pin BPM adjustments and loop actions to a fixed bottom dock
+- [x] Move track ordinal above Library loaded count in a reserved app footer; show waveform generation status bottom-right without layout shifts
+- [x] Space Playlists action row from the chooser and add one-shot, persisted Shuffle for the whole selected playlist
+- [x] Keep active queue and ongoing playback stable when shuffling a currently playing playlist
+- [ ] Verify compact footer on small-screen devices and shuffle persistence after restart
 - [x] Prepare locally signed R3 release APK with keystore outside Git and passwords in temporary environment variables
 - [x] Increment versionCode and keep signing key reusable for subsequent updates
 - [x] Explain Google Play Protect scanning/unknown-source limitations and Google Play internal testing

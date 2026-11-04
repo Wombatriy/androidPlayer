@@ -13,6 +13,8 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.view.Gravity
+import android.text.TextUtils
 import android.view.View
 import android.view.MotionEvent
 import android.view.WindowInsets
@@ -52,6 +54,7 @@ class MainActivity : Activity() {
         override fun onTrackChanged() {
             bpmCoordinator.selectTrack(playback.currentTrack)
             playerScreen.refreshTrack()
+            updateFooterTrack()
         }
         override fun onPlaybackControlsChanged() = playerScreen.updatePlaybackState()
         override fun onPositionChanged(positionMs: Long, durationMs: Long) =
@@ -65,6 +68,7 @@ class MainActivity : Activity() {
         override fun onSpeedChanged() = playerScreen.refreshSpeed()
         override fun onQueueChanged() {
             if (::queueScreen.isInitialized) queueScreen.refresh()
+            updateFooterTrack()
         }
     }
 
@@ -97,6 +101,7 @@ class MainActivity : Activity() {
             bpmCoordinator.selectTrack(playback.currentTrack)
             playerScreen.refreshTrack()
             queueScreen.refresh()
+            updateFooterTrack()
             restoreFolder()
         }
 
@@ -112,6 +117,9 @@ class MainActivity : Activity() {
     private lateinit var playlistsScreen: PlaylistsScreen
     private lateinit var queueScreen: QueueScreen
     private lateinit var status: TextView
+    private lateinit var footerTrack: TextView
+    private lateinit var footerWaveform: TextView
+    private var currentWaveformStatus = ""
     private val playlists: PlaylistCoordinator by lazy { PlaylistCoordinator(this, playback) }
     private lateinit var pages: List<View>
     private lateinit var tabButtons: List<Button>
@@ -241,7 +249,7 @@ class MainActivity : Activity() {
             setBackgroundColor(PlayerPalette.border)
         }, LinearLayout.LayoutParams(-1, dp(1)))
 
-        playerScreen = PlayerScreen(this, playback, bpmCoordinator)
+        playerScreen = PlayerScreen(this, playback, bpmCoordinator, ::updateWaveformStatus)
         libraryScreen = LibraryScreen(
             this,
             onChooseFolder = ::chooseFolder,
@@ -275,12 +283,48 @@ class MainActivity : Activity() {
         }
         root.addView(host, LinearLayout.LayoutParams(-1, 0, 1f))
 
-        status = TextView(this).apply {
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-            textSize = 12f
+        // Constant-size information dock. Neither a track change nor the
+        // waveform worker's status can resize the main Player area.
+        val footer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(PlayerPalette.surface)
         }
-        root.addView(status)
+        footerTrack = TextView(this).apply {
+            textSize = 11f
+            setTextColor(PlayerPalette.text)
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            setPadding(dp(12), 0, dp(12), 0)
+            maxLines = 1
+            isSingleLine = true
+        }
+        footer.addView(footerTrack, LinearLayout.LayoutParams(-1, dp(19)))
+        val statusRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        status = TextView(this).apply {
+            textSize = 11f
+            setTextColor(PlayerPalette.text)
+            setPadding(dp(12), 0, dp(5), 0)
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        }
+        statusRow.addView(status, LinearLayout.LayoutParams(0, dp(25), 1f))
+        footerWaveform = TextView(this).apply {
+            textSize = 11f
+            setTextColor(PlayerPalette.text)
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding(dp(4), 0, dp(12), 0)
+        }
+        statusRow.addView(footerWaveform, LinearLayout.LayoutParams(0, dp(25), 1f))
+        footer.addView(statusRow)
+        root.addView(footer)
         updateStatus()
+        updateFooterTrack()
+        updateWaveformStatus(currentWaveformStatus)
 
         // API 35 edge-to-edge policy can put views behind system bars unless
         // the root consumes its safe insets. Also respects gesture navigation.
@@ -494,6 +538,21 @@ class MainActivity : Activity() {
     private fun updateStatus() {
         status.text = if (loadingFolder) "Scanning music folder…"
         else "${libraryScreen.trackCount} tracks loaded${if (loadedFromCache) " (cached)" else ""}"
+    }
+
+    /** The queue counter lives above the library status, not in Player. */
+    private fun updateFooterTrack() {
+        if (!::footerTrack.isInitialized || !::playback.isInitialized) return
+        footerTrack.text = if (playback.currentTrack == null) ""
+        else "Track ${playback.queuePosition + 1} of ${playback.queueSize}"
+    }
+
+    /** Reserved footer slot prevents waveform progress from shifting controls. */
+    private fun updateWaveformStatus(message: String) {
+        currentWaveformStatus = message
+        if (!::footerWaveform.isInitialized) return
+        footerWaveform.text = message
+        footerWaveform.visibility = if (message.isBlank()) View.INVISIBLE else View.VISIBLE
     }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()

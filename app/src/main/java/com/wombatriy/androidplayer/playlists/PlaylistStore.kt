@@ -44,6 +44,14 @@ class PlaylistStore(context: Context) {
         return true
     }
 
+    /** Saves one randomized URI order; no audio files are touched. */
+    fun shuffle(id: String): Boolean {
+        val updated = PlaylistCatalog.shuffle(entries, id)
+        if (updated == entries) return false
+        set(updated)
+        return true
+    }
+
     fun replaceUri(before: String, after: String) =
         set(PlaylistCatalog.replaceUri(entries, before, after))
 

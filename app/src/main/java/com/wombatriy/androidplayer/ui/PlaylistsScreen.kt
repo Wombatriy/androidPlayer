@@ -64,6 +64,7 @@ class PlaylistsScreen(
     private val help = context.textLine("Create a playlist to get started.", 12f)
     private val renameButton = context.actionButton("Rename") { renameSelected() }
     private val deleteButton = context.actionButton("Delete") { deleteSelected() }
+    private val shuffleButton = context.actionButton("Shuffle") { shuffleSelected() }
     private var selectedId: String? = null
     private var refreshing = false
 
@@ -80,16 +81,22 @@ class PlaylistsScreen(
                 changed(added.id)
             } },
             renameButton,
-            deleteButton
+            deleteButton,
+            shuffleButton
         ).forEach { button ->
             button.minWidth = 0
             button.minimumWidth = 0
             button.textSize = 12f
-            actions.addView(button, LayoutParams(0, -2, 1f))
+            actions.addView(button, LayoutParams(0, -2, 1f).apply {
+                marginStart = context.dp(2)
+                marginEnd = context.dp(2)
+            })
         }
         addView(actions)
         chooser.adapter = chooserAdapter
-        addView(chooser, LayoutParams(-1, -2))
+        addView(chooser, LayoutParams(-1, -2).apply {
+            topMargin = context.dp(14)
+        })
         addView(help)
         addView(tracksList, LayoutParams(-1, 0, 1f))
 
@@ -124,6 +131,7 @@ class PlaylistsScreen(
         chooser.isEnabled = catalog.isNotEmpty()
         renameButton.isEnabled = catalog.isNotEmpty()
         deleteButton.isEnabled = catalog.isNotEmpty()
+        shuffleButton.isEnabled = activePlaylist?.trackUris?.size?.let { it > 1 } == true
         refreshing = false
         updateRows()
     }
@@ -300,6 +308,14 @@ class PlaylistsScreen(
             )
         }
         dialog.show()
+    }
+
+    private fun shuffleSelected() {
+        val selected = activePlaylist ?: return
+        if (!store.shuffle(selected.id)) return
+        changed(selected.id)
+        tracksList.setSelection(0)
+        notice("Playlist shuffled and saved")
     }
 
     private fun changed(playlistId: String) {

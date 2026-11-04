@@ -1,5 +1,7 @@
 package com.wombatriy.androidplayer.playlists
 
+import kotlin.random.Random
+
 /**
  * Pure immutable playlist operations; an ordered list of SAF URI strings.
  * Playlists never copy, move or sort the underlying music files.
@@ -82,6 +84,27 @@ object PlaylistCatalog {
             ordered.add(index, movingUri)
             if (ordered == playlist.trackUris) playlist
             else playlist.copy(trackUris = ordered)
+        }
+    }
+
+    /**
+     * One-shot shuffle permanently updates the playlist order. It is NOT a
+     * playback mode: previous/next continue to follow the stored URI order.
+     * Unavailable URIs are kept in the mix so the catalog never loses tracks.
+     */
+    fun shuffle(
+        all: List<UserPlaylist>,
+        id: String,
+        random: Random = Random.Default
+    ): List<UserPlaylist> = edit(all, id) { playlist ->
+        val original = playlist.trackUris
+        if (original.size < 2) playlist else {
+            val shuffled = original.shuffled(random)
+            // A valid random shuffle can occasionally return the original
+            // order. Guarantee a visible change on every user button tap.
+            val result = if (shuffled == original) shuffled.drop(1) + shuffled.first()
+                else shuffled
+            playlist.copy(trackUris = result)
         }
     }
 

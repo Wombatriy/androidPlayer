@@ -17,7 +17,6 @@ import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
 import com.wombatriy.androidplayer.R
-import com.wombatriy.androidplayer.BuildConfig
 import com.wombatriy.androidplayer.bpm.BpmCoordinator
 import com.wombatriy.androidplayer.player.EndMode
 import com.wombatriy.androidplayer.player.TempoMath
@@ -27,22 +26,22 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 /** Retained view: never recreate seekbars or buttons on playback callbacks. */
-class PlayerScreen(context: Context, private val playback: PlaybackController, private val bpmCoordinator: BpmCoordinator) : ScrollView(context) {
+class PlayerScreen(
+    context: Context,
+    private val playback: PlaybackController,
+    private val bpmCoordinator: BpmCoordinator,
+    private val onWaveformStatus: (String) -> Unit
+) : LinearLayout(context) {
+    private val scrollingContent = ScrollView(context)
     private val column = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(context.dp(16), context.dp(12), context.dp(16), context.dp(24))
+        setPadding(context.dp(16), context.dp(12), context.dp(16), context.dp(8))
     }
     private val nameLabel = context.textLine("Choose a track in Library", 18f)
-    private val audioEngineBadge = context.textLine("R3 • EXPERIMENTAL", 11f).apply {
-        visibility = if (BuildConfig.WITH_RUBBERBAND) View.VISIBLE else View.GONE
-        setTextColor(Color.rgb(132, 87, 12))
-        contentDescription = "Rubber Band R3 real-time audio engine experimental build"
-    }
     private val bpmSummary = context.textLine("BPM: —", 14f)
     private var bpmDialog: AlertDialog? = null
     private var bpmPanel: BpmPanel? = null
     private val bpmButton = context.actionButton("BPM adjustments") { showBpmDialog() }
-    private val queueLabel = context.textLine()
     private val errorLabel = context.textLine()
     private val positionLabel = context.textLine("00:00 / 00:00")
     private val positionBar = SeekBar(context)
@@ -53,17 +52,10 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
         playbackRunning = { playback.isPlaying },
         playbackSpeed = { playback.speed }
     )
-    private val waveformStatus = context.textLine("", 12f).apply {
-        visibility = View.GONE
-        setTextColor(Color.rgb(91, 105, 109))
-    }
     private val waveformCoordinator = WaveformCoordinator(
         context,
         onWaveform = waveformView::setWaveform,
-        onStatus = { message ->
-            waveformStatus.text = message
-            waveformStatus.visibility = if (message.isBlank()) View.GONE else View.VISIBLE
-        }
+        onStatus = onWaveformStatus
     )
     private val playButton = context.actionButton("Play") { playback.togglePlayPause() }
     private val previousButton = context.actionButton("Previous") { playback.previous() }
@@ -79,17 +71,22 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
     private val speedBar = SeekBar(context)
     private val loopLabel = context.textLine()
     private val controls = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+    private val bottomDock = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(context.dp(16), context.dp(4), context.dp(16), context.dp(8))
+    }
     private var isScrubbing = false
 
     init {
-        isFillViewport = true
+        orientation = LinearLayout.VERTICAL
         setBackgroundColor(PlayerPalette.background)
-        addView(column)
+        scrollingContent.isFillViewport = true
+        scrollingContent.addView(column)
+        addView(scrollingContent, LinearLayout.LayoutParams(-1, 0, 1f))
+        addView(bottomDock, LinearLayout.LayoutParams(-1, -2))
 
         column.addView(nameLabel)
-        column.addView(audioEngineBadge)
         column.addView(bpmSummary)
-        column.addView(queueLabel)
         column.addView(errorLabel)
         column.addView(controls)
 
@@ -101,7 +98,6 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
                 topMargin = context.dp(6)
                 bottomMargin = context.dp(18)
             })
-        controls.addView(waveformStatus)
         controls.addView(positionBar,
             LinearLayout.LayoutParams(-1, -2).apply {
                 topMargin = context.dp(8)
@@ -205,10 +201,14 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
             R.drawable.ic_clear_loop,
             "Clear A–B loop"
         ) { playback.clearLoop() })
-        controls.addView(loopControls)
-        controls.addView(loopLabel)
+        // Fixed footer: neither waveform progress nor player scrolling
+        // can move these controls when their status changes.
+        bottomDock.addView(loopLabel, LinearLayout.LayoutParams(-1, context.dp(30)))
+        bottomDock.addView(loopControls)
         bpmButton.isAllCaps = false
-        controls.addView(bpmButton)
+        bottomDock.addView(bpmButton, LinearLayout.LayoutParams(-1, context.dp(44)).apply {
+            topMargin = context.dp(4)
+        })
         updatePlaybackState()
 
         refreshTrack()
@@ -219,10 +219,9 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
         val track = playback.currentTrack
         nameLabel.text = track?.name ?: "Choose a track in Library"
         refreshBpm()
-        queueLabel.text = if (track != null) "Track ${playback.queuePosition + 1} of ${playback.queueSize}" else ""
-        queueLabel.visibility = if (track == null) View.GONE else View.VISIBLE
         errorLabel.visibility = View.GONE
         controls.visibility = if (track == null) View.GONE else View.VISIBLE
+        bottomDock.visibility = if (track == null) View.GONE else View.VISIBLE
         updatePosition(playback.currentPosition, playback.duration)
         updatePlaybackState()
         updateLoop()
@@ -281,7 +280,7 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
         val a = playback.pointA
         val b = playback.pointB
         waveformView.setMarkers(a, b)
-        loopLabel.visibility = if (a == null && b == null) View.GONE else View.VISIBLE
+        loopLabel.visibility = if (a == null && b == null) View.INVISIBLE else View.VISIBLE
         loopLabel.text = buildString {
             if (a != null) append("A ${format(a)}")
             if (b != null) {
