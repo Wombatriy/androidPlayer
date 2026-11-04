@@ -1,0 +1,953 @@
+# BPM Player — archived development notes
+
+> Historical engineering log preserved from the previous README. These notes
+> describe earlier milestones and may refer to features that were not yet
+> implemented at the time. For the **current application**, see
+> [README.md](../README.md); for pending work, see [ROADMAP.md](../ROADMAP.md).
+
+---
+
+# BPM Player
+
+An Android music player designed for DJ practice and future BPM analysis.
+
+
+For physical file management and the Library Current action, see
+[Library maintenance](docs/LIBRARY_FILE_OPERATIONS.md).
+
+## Iteration 01 — Player foundation
+
+- Four tabs: **Player**, **Library**, **Playlists**, **Queue** (the last two are placeholders).
+- Choose a music directory through Android's Storage Access Framework. Permission persists after restart.
+- Browse audio files in that folder and its subfolders.
+- Tap a track to play it using Media3 ExoPlayer.
+- Seek, pause, skip ±10 seconds, change speed from 0.50× to 2.00× with pitch preservation.
+- Set A and B at the current position; playback repeats from A after reaching B.
+- Show BPM extracted from a filename such as `128 - Artist - Track.mp3`. No automatic tempo measurement yet.
+
+## Open and test
+
+1. Open the repository root as a project in Android Studio (JDK 17, Android SDK 35).
+2. Sync Gradle, then run the `app` configuration on Android 8.0+ (API 26+).
+3. Go to **Library → Choose music folder**, select a folder with audio.
+4. Tap an audio file, test Play/Pause, seeking, speed control and A/B markers.
+5. Navigate between tabs and confirm playback continues while the activity is open.
+
+**Known limitations:** UI is functional but deliberately basic; playback stops when the activity is destroyed (no foreground playback service yet). Very large directories may take time to enumerate. No waveform, BPM detection, playlist persistence, rename or queue ordering yet. A/B looping has ~200 ms polling precision; a sample-accurate loop is future work.
+
+The app uses SAF and does not request unrestricted file access. On Android 11+, system folder picker restricts selecting some system/root directories.
+
+## Next iterations
+
+1. Proper player UI, playback service, waveform, refined A/B loop.
+2. Single-track BPM detection and confidence / ×0.5, ×1.5, ×2, ×4 corrections.
+3. Batch BPM measurement, persistent results and filename source indicators.
+4. SAF-based safe file renaming with preview/confirmation.
+5. Persistent playlists and add-to-playlist actions from Library.
+6. Playlist-based sortable Queue and drag-and-drop ordering.
+
+## Gradle wrapper / Android Studio setup
+
+All four official Gradle 8.11.1 wrapper files are checked into the repository.
+Do **not** install Gradle globally just to build this project.
+
+On Windows PowerShell:
+
+```powershell
+git switch feature/01-player-foundation
+git pull origin feature/01-player-foundation
+.\gradlew.bat --version
+.\gradlew.bat :app:assembleDebug
+```
+
+In Android Studio, use **Sync Project with Gradle Files**. Select **Gradle Wrapper** as the Gradle distribution and **JDK 17** as Gradle JDK. Install Android SDK 35 when prompted.
+
+The repo has a GitHub Actions workflow that attempts a clean debug build for each PR. Local machine-specific files such as `local.properties` should not normally be committed; the workflow discards the checked-in `local.properties` before building.
+
+## Iteration 02B — architecture and tests
+
+This iteration separates `MainActivity` (tab navigation, SAF and scanning),
+`player/PlaybackController.kt` (Media3 and A–B constraints),
+`player/LoopRange.kt` (pure loop boundary logic), and `ui/PlayerScreen.kt`,
+`ui/LibraryScreen.kt`, `ui/SpeedRulerView.kt` (retained views).
+
+The Library tab now uses recycled `ListView` rows rather than eagerly constructing
+one view for every file. Its scroll position persists when switching tabs or playing
+an item, and the selected scroll anchor is kept on rescan.
+
+The loop is **end-exclusive**: seeking before A or at/after B restarts at A;
+seeking within [A, B) stays at the requested position. Play/Pause uses
+`playWhenReady` to avoid flashing while playback buffers after seeking.
+
+Run `./gradlew :app:assembleDebug :app:testDebugUnitTest` to compile and test.
+See [ROADMAP.md](ROADMAP.md) for future improvements. Higher-quality pitch-preserving
+time stretching will prioritize playback speeds between **0.8× and 1.1×**.
+
+## Iteration 02C — fast startup and playback queue
+
+On first launch or a selected new folder, the app enumerates the SAF tree in a worker
+thread and stores a snapshot in private app storage. **On later app launches the
+snapshot is loaded without traversing the folder again**. Press **Library → Rescan**
+when files have been added, deleted or renamed. A missing/invalid snapshot is
+recovered by scanning again. Playlist and BPM features will build on this metadata.
+
+Library scroll index and pixel offset are saved to preferences on pause and when
+leaving the Library tab, so returning after closing/relaunching the app restores
+its previous place (after the library snapshot loads).
+
+Player has **Previous / Play-Pause / Next** buttons and the initial queue follows
+the alphabetical Library order. The selected track-end mode is remembered:
+
+- **Stop:** stop at the end of this track.
+- **Next:** play the next Library item, stopping after the last one.
+- **Repeat:** repeat the current track.
+
+An active A–B loop takes priority over these end-of-track modes. Changing tracks
+clears the A–B markers. Audio is still owned by the Activity: background playback
+and lock-screen Play/Previous/Next controls are planned in ROADMAP.md (09).
+
+### GitHub Actions notifications
+
+The Android build workflow now uses only `workflow_dispatch`, not automatic
+`push` or `pull_request` triggers. To run it manually, open **GitHub → Actions →
+Android build → Run workflow** and select a branch. Build locally with
+`./gradlew :app:assembleDebug :app:testDebugUnitTest` (PowerShell:
+`.\\gradlew.bat :app:assembleDebug :app:testDebugUnitTest`).
+
+## Iteration 02D — precise speed and compact controls
+
+- Tap the **centered speed value** to show an **empty input field**. It is focused
+  immediately and the numeric keyboard opens without a second tap. Enter an
+  integer percentage: `85` = 0.85×.
+- Inputs below **25** clamp to **25**, and inputs above **150** clamp to **150**.
+  No validation errors or pop-up hints appear. Applying a blank value leaves the
+  current speed unchanged.
+- Slider, Reset, speed label, and adjusted BPM use the same percentage.
+- When a track has BPM in the filename, playback at a different speed displays
+  e.g. `Filename BPM: 128 → 102.4 BPM` at 80%. This is a mathematical
+  adjustment, not a measured BPM.
+- Transport buttons are arranged **Prev | −10s | Play/Pause | +10s | Next**
+  in one row, including on narrower phone screens.
+
+### Audio processing
+
+The experimental **Android mixer** backend was removed after phone listening
+revealed crackling. **Media3/Sonic remains the default**, including if the old
+experimental mode had been selected previously. A dedicated high-quality
+real-time time-stretch engine is deferred to the **final roadmap stage**,
+after BPM, playlists, queue, waveform, and lock-screen features. The
+quality-sensitive speed range is **0.8×–1.1×**.
+
+GitHub Actions remains manual-only; use Android Studio or
+`./gradlew :app:assembleDebug :app:testDebugUnitTest` to build and test locally.
+
+## Iteration 03 — single-track BPM analysis and compact Player
+
+BPM detection starts **automatically** when you select a track for the first
+time, including tracks with a BPM prefix in their filename. A saved detected
+estimate is reused on later playback; **Detect again** in the BPM window
+reruns the analysis. Android MediaExtractor/MediaCodec decodes at most 70 s
+on a worker thread while music continues. BeatEstimator uses an onset-energy
+autocorrelation: it is a useful estimate but can confuse half/double tempo,
+complex swing, quiet intros or weak percussion.
+
+The Player screen now shows only a **compact BPM summary**. The **BPM
+adjustments** button below the loop controls opens a scrollable dialog with
+the full controls:
+
+- **Filename BPM**, **Detected BPM**, **Manual BPM** are shown separately.
+  The active BPM is filename-first by default. A deliberate manual correction
+  overrides the filename; detection alone never overrides it.
+- **Detect again**, **Enter BPM**, **×0.5 / ×1.5 / ×2 / ×4**, and **Clear manual
+  override** are available in the dialog.
+- **Tap BPM** uses a monotonic nanosecond timestamp for every tap. Each
+  inter-tap interval is inserted into a **sorted ascending list**. After at
+  least **9 taps / 8 intervals**, the fastest 25% and slowest 25% are discarded
+  and the arithmetic average of the middle 50% produces BPM. Additional taps
+  refine the estimate. Accidental double taps and missed beats tend to be
+  rejected as outliers.
+- The tap sequence resets when the BPM window closes. It also resets after
+  **3 seconds without taps**, immediately showing an explanatory message.
+  A completed Tap BPM measurement is saved as a manual override.
+
+Other Player controls are shortened to fit a normal phone screen:
+**Prev | −10s | Play/Pause | +10s | Next** remain one row; playback end mode
+cycles **Stop → Next → Repeat** using three matching teal PNG assets. The
+A–B row has compact **A**, **B**, and **Clear** (matching PNG) controls.
+Speed Reset uses the same icon family; PNG assets are in
+`app/src/main/res/drawable-nodpi/`. Buttons retain accessible labels and
+their previous actions. Redundant `At track end` and `Loop inactive` text is
+removed, and the speed ruler is shorter.
+
+In BPM adjustments, **Clear manual override** is always present but disabled
+until a manual BPM has been saved, so tapping cannot shift the button rows.
+The status line also reserves fixed space and the explanatory Tap BPM paragraph
+is removed. Detected BPM shows both **½** and **×2** alternatives: a detected
+118 BPM therefore displays 59 and 236 as possible metrical interpretations.
+Detection itself still does not override filename BPM.
+
+### Device verification
+
+1. Open a file `128 - Artist - Track.mp3`: **Filename 128** must remain
+   active even after automatic detection finishes. In BPM adjustments,
+   **Detected** should appear separately; Detect again must work.
+2. Open a file without BPM: an estimate should appear automatically without
+   blocking playback. Reopen it: its saved result should display immediately.
+3. In Tap BPM, make at least **9 taps** at ~120 BPM. Deliberately tap once too
+   early and skip one beat; the middle-window average should stay near 120.
+4. Wait idle for 3 seconds: the tap window clears with a message. Close and
+   reopen the dialog: it starts empty.
+5. Apply ×0.5 or Enter BPM and check the explicit manual override wins.
+   Clear it: the filename value returns, or detected if no filename exists.
+6. Confirm all main Player controls fit without scrolling on your phone.
+
+Playlists will later be **ordered cached URI lists** (not automatically sorted
+or copied music). Background MediaSessionService is planned to keep playback
+running after Android Back closes the Activity, with lock-screen controls.
+
+GitHub Actions remains manual-only and has not been dispatched for this PR.
+
+## Iteration 04 — large-library BPM and scan progress
+
+The Library tab has **Choose folder | Rescan | Batch BPM**. The old redundant
+`Music Library` heading is removed. The main tab bar is separated from
+content by two narrow dark rules with a light gap, matching the requested
+mock-up.
+
+### Folder scans
+Both **Choose folder** (first import or new folder) and **Rescan** use one SAF
+scanner on a background executor. A thin **indeterminate progress bar** and a
+live count of files/folders visited appear while scanning. SAF does not expose
+an advance total for arbitrary directory trees, so showing a percent for
+scanning would be misleading. Once enumeration completes, the regular
+library snapshot and scroll restoration are retained. Relaunch still loads
+the cached snapshot without scanning.
+
+### Batch BPM
+Tap **Batch BPM** to analyze the current library snapshot. The button changes
+to **Cancel BPM**, and a **determinate progress bar** shows completed/total.
+A compact status line shows how many tracks were detected, skipped because
+a detection was already saved, and failed. The operation is deliberately
+**user-triggered**, not launched automatically at startup or after Rescan.
+
+The batch runs on up to **two worker decoders**, bounded by a semaphore shared
+with foreground one-track detection. This limits contention with playback
+and other phone tasks. Source lookups, decoder work and metadata writes stay
+off the UI thread. Detected records are committed in groups of six to reduce
+disk operations; UI updates are grouped and progress is throttled.
+
+A previously detected track is skipped even if it also has a filename BPM.
+A filename BPM **does not** mean the song has been analyzed. Filename/manual
+priority remains intact; batch analysis never overwrites a manual override.
+Canceled or interrupted jobs can be restarted, and previously saved detections
+will be skipped. Failed/unreadable tracks can be retried.
+
+Library BPM badges: **F** (teal) = filename, **D** (blue) = detected estimate,
+**M** (amber) = manual. Rows remain recycled ListView items; no disk/codec work
+is performed by a row renderer.
+
+### Suggested phone checks
+1. Choose a fresh folder and confirm the scan progress indicator and found
+   count, then press Rescan and confirm the same behavior.
+2. Start Batch BPM on a large folder and verify the progress advances while
+   playback and navigation remain responsive.
+3. Stop halfway through, restart Batch BPM, and confirm previously detected
+   tracks count as saved/skipped rather than being decoded again.
+4. Verify colored F/D/M badges and that filename BPM is still preferred over
+   a detected estimate in Player. Manual corrections must keep priority.
+5. Restart the app: the cached library and BPM data must reappear without
+   rescanning or reanalyzing already-processed tracks.
+6. Leave Batch BPM running during playback, A–B looping, speed changes and
+   navigating tabs. Watch battery/heat; mobile hardware differs.
+
+The current batch is owned by the Activity, not a foreground service: closing
+the app interrupts it (partial committed results survive). Long-running
+background processing is a separate MediaSessionService/work scheduling
+consideration for a future step.
+
+GitHub Actions remains manual-only and was not automatically dispatched.
+
+## Iteration 05 — SAF rename, Library labels and navigation plan
+
+- **Fixed F 312:** the old filename BPM parser accepted only 30–300 BPM,
+  so a file named `312 - Artist - Title.flac` silently lost its filename
+  badge. The accepted range is now **20–800 BPM**, consistent with manual BPM.
+- Library's right column now displays just `F 312`, `D 128.5` or `M 140`
+  in source-specific colors; the redundant `BPM` suffix is removed.
+- The four main tab buttons have a thin black divider **between** each pair,
+  in addition to the existing double horizontal line beneath the tab bar.
+
+### Rename one audio file
+
+**Long-press a track in Library**. If its active BPM is known, the app shows
+the original name, the suggested replacement and the BPM source. For example:
+
+`Artist - Title.flac` → `128 - Artist - Title.flac`
+
+Existing BPM prefixes are replaced instead of duplicated; the original file
+extension is preserved. Fractional BPM is rounded to the nearest whole number
+for the filename. The app cannot manufacture missing artist information: a
+file named `Title.mp3` becomes `128 - Title.mp3`.
+
+The user must explicitly confirm the rename. Provider-side work is done on a
+worker thread. The app checks persisted **write** access, the provider's rename
+support, and same-folder filename conflicts (case-insensitively) before showing
+the preview and again just before performing the operation. Audio is **not
+copied, deleted or overwritten** by the app; however, arbitrary third-party
+SAF providers control their own rename semantics, so concurrent external
+file changes and provider-specific behavior must be tested on device.
+
+The current track **can be renamed**. Once the user confirms, the player
+stops and releases its media descriptor, SAF renames the file on the worker,
+and playback restarts at **00:00** using the resulting URI. If the rename fails,
+the player attempts to restart the original track. A different track is
+renamed without interrupting music. Renaming is blocked during a library
+scan or BPM batch.
+
+SAF may return a different document URI after renaming. The app moves saved
+manual/detected BPM metadata to that URI, replaces the reference in its
+playback queue and persists the updated Library snapshot. A failure to update
+metadata or cache is reported explicitly.
+
+**One-time upgrade note:** library cache format changes from v1 to v2 to
+store the source file's parent document URI. On the first app launch after
+upgrade, the music directory is scanned again. Subsequent launches use the
+cached snapshot as before.
+
+### Android Back behavior planned for step 09
+
+Treat Library as one virtual **All Tracks** playlist. When the user later starts
+playback from a custom playlist, the Player's **Back** navigates to Queue;
+when started from Library, Back navigates to Library. Back from Library should
+minimize the app, with audio continuing in a MediaSessionService. This is a
+roadmap requirement only; the Activity still owns ExoPlayer in step 05.
+
+No GitHub Actions jobs have been started automatically for this change.
+
+### Follow-up improvements in PR #8
+
+- A second tap on the already loaded track does **nothing**, preserving the
+  play position, playback state and A–B markers.
+- Choosing another track starts playback but **stays on Library**. The Player
+  tab is still available for detailed controls.
+- After renaming with a manual BPM value, its saved **M** override is removed:
+  the new filename now carries the correct BPM and should display as **F**.
+  The auto-detected estimate remains stored for side-by-side comparisons.
+- Library/virtual All Tracks uses **numeric BPM ascending**, independent of
+  provenance (F/D/M). For example, 90, 100, 120, 236, 312; tracks without
+  a known BPM appear afterward in alphabetical order. BPM-based sorting is
+  live while batch detection is running. UI updates are coalesced (~450 ms),
+  retain the top visible item by **content URI**, and keep the current
+  queue position by file identity without restarting playback.
+- A future gesture UX task: swipe left/right between Player, Library,
+  Playlists, and Queue, carefully avoiding conflicts with dragging the
+  seekbar, the speed slider and vertical library scrolling.
+
+## Iteration 06 — saved playlists and their playback queue
+
+**Playlists** is now a working tab, not a placeholder. You can create, rename,
+delete and select playlists. Each playlist stores a **name, stable ID and
+an ordered list of SAF URI references** in app-private SharedPreferences.
+The underlying music stays in place: no copying, moving or deleting audio
+when changing a playlist. Items are saved in the **order you add or move
+them**, never alphabetically or by BPM.
+
+### Everyday workflow
+1. Open **Playlists → + New** and name the playlist, e.g. `Jazz practice`.
+2. In **Library**, long-press a track to open a choice between **Add to playlist**
+   and **Rename with BPM**. Choose the desired playlist; duplicate additions
+   are ignored. If no playlist exists, you can create one while adding.
+3. In **Playlists**, choose a playlist from the dropdown and tap a track.
+   Music starts without changing tabs.
+4. **Queue** shows the source and exact playback order. Previous/Next and
+   Stop/Next/Repeat follow that source, stopping at the end rather than wrapping.
+   Tap any Queue row to jump to that track without changing playlist context.
+5. Long-press a Playlists track for **Play / Move up / Move down / Remove**.
+   Removal affects the playlist reference only. Playlists persist after app
+   restarts; the view's selection lives for the current Activity session.
+
+**All Tracks** remains the virtual Library playlist, with numeric BPM sorting.
+Changing BPM/order in Library does not rearrange a user playlist. Tapping a
+song already playing does not restart it; selecting that song from another
+source can change the queue context without interrupting the audio.
+
+The UI displays **Unavailable** for URI references that are no longer part
+of the selected music folder or otherwise not found in the Library cache.
+These items can still be moved or removed but are skipped by playlist playback.
+Use Library → Rescan if a file has been added/removed. A SAF file rename through
+this app updates matching references across all playlists and the active
+playback queue, preserving their positions.
+
+### Real-device checks
+1. Create two playlists and add files in deliberately non-BPM order.
+2. Play a middle song in playlist A; Next/Previous and end mode Next must
+   remain within A. Queue should display A and the correct selected row.
+3. Switch to playlist B, play another song; Queue changes to B.
+4. Play the same song in Library; Queue should become All Tracks without
+   resetting a currently playing song.
+5. Move, remove, rename and delete playlists; ensure edits do not delete
+   original media files and changing order does not restart playback.
+6. Fully restart the app: saved playlists, names and track order should
+   remain. Select another folder and verify old entries show Unavailable.
+7. Rename a track using SAF; confirm all playlist URI references are updated.
+8. Check that a large Library and long playlists retain responsive scrolling.
+
+Full background playback, Android Back navigation, drag-and-drop Queue
+reordering and lock-screen controls remain on the later roadmap.
+GitHub Actions is still **manual-only**, to avoid build notification spam.
+
+## Iteration 07 — playlist drag/drop and swipe navigation
+
+**All editing lives in Playlists; Queue is a playback view.**
+
+The **Playlists** tab now displays a **≡** drag handle on the right side of
+every song. Long-press the handle, drag onto another song and release. Moving
+downward inserts after the drop target; moving upward inserts before it.
+A haptic indication confirms the drag start, the drop row is highlighted,
+and holding near the top/bottom automatically scrolls long playlists.
+
+**Long-press the song row itself** for the existing Play / Move up /
+Move down / Remove actions. Both forms of reordering update the same
+persistent URI list. Missing/unavailable songs retain their order and can
+also be moved or removed. No audio is copied, sorted by BPM or modified.
+
+If the edited playlist is the active playback source, Queue/Previous/Next
+update immediately without restarting the song being played. If it isn't
+the active source, only that playlist changes; the playback queue is untouched.
+
+**Queue is read-only for order**: it displays the active source (All Tracks
+or a named playlist) and allows tapping a song to play. It has **no drag
+handles or reorder controls**. Its **Current** button scrolls to the playing
+song; source changes jump to the current song, while ordinary updates
+preserve the visible anchor.
+
+### Swipe between tabs
+
+Swipe left/right over non-interactive content to change neighboring tabs:
+Player ↔ Library ↔ Playlists ↔ Queue. Swipes don't wrap at the edges.
+Gestures must travel about 84 dp horizontally and finish within 650 ms.
+Vertical list scrolling, buttons, SeekBars, text input, dropdowns and
+**Playlists drag handles** are excluded, as are the Android Back edges.
+
+### Phone verification
+1. Create a user playlist A–B–C–D, play B, then in **Playlists** drag
+   D above B: the order should be A–D–B–C. B keeps playing continuously.
+2. Use long-press **Move up / Move down** on the song row. Both methods
+   must change the same saved playlist order.
+3. Switch to **Queue**. It reflects the new order and has **no ≡ handles**.
+   Previous/Next follow the new order; Current jumps to B.
+4. Restart the app and check the saved order in Playlists.
+5. Edit a non-playing playlist: the active playback Queue doesn't change.
+6. Drag an unavailable track and drag near the edge of a long playlist;
+   confirm reorder, row highlighting and auto-scroll.
+7. Swipe between all four tabs, and separately use the seekbar, speed ruler,
+   buttons, vertical scrolling and the system Back-edge gesture.
+   No accidental tab switch or song selection should occur.
+
+Background playback and Android Back behavior remain in stage 09.
+GitHub Actions is manual-only and must not be automatically dispatched.
+
+## Iteration 08 — zoomed waveform and swipe seeking
+
+The Player waveform is now a **zoomed local timeline**, not a scaled-down
+picture of an entire song. The default visible range is **10 seconds before
+and 10 seconds after the current playback position** (20 seconds total).
+At the beginning or end of a track the window shifts to stay inside the file.
+For a track shorter than 20 seconds, the complete track is shown.
+
+**To change zoom:** edit the one constant
+`WaveformView.WINDOW_RADIUS_SECONDS = 10L`.
+For example, `5L` shows 10 seconds in total; `15L` shows 30 seconds.
+
+### Waveform gestures
+
+- **Swipe left over the waveform → go forward through the song.**
+- **Swipe right over the waveform → go backward.**
+- **Tap inside the displayed waveform → seek to that precise local timestamp.**
+- **Long-press does nothing**, so it cannot accidentally change A or B.
+- A/B markers are only **thin visual lines** and do not intercept touches.
+  Set A/B with the existing **A** and **B** buttons; Clear removes the loop.
+- Swipes on other non-interactive content still switch Player, Library,
+  Playlists and Queue. `TabSwipeNavigator` explicitly excludes
+  `WaveformView` to avoid any conflict.
+
+### Smooth animation while music plays
+
+In the prior preview the audio waveform moved only when the Player UI ticker
+updated (roughly every **120 ms**, about 8 frames per second). Even after
+eliminating the changing peak heights, that looked like a regularly jumping
+waveform during ordinary playback.
+
+**WaveformView now animates independently on display vsync** (typically up
+to 60 frames per second), reading `PlaybackController.currentPosition`
+directly from ExoPlayer's live media clock. The ordinary seekbar, BPM text
+and remaining Player UI keep their low-frequency update rate.
+
+A coarse ticker update can no longer overwrite a newer position from the
+live media clock. The renderer follows the real track speed, seek operations
+and A–B jumps, without guessing time or starting a separate playback timer.
+
+Frame requests stop as soon as ExoPlayer is paused/buffering, the Player tab
+is hidden, the window is detached, or the Activity closes. Touch-scrubbing
+the waveform and dragging the full-track SeekBar also temporarily suppress
+the animation so the finger controls the preview. On release or playback
+resumption the live media clock becomes authoritative again.
+
+New JVM tests cover old tick vs. newer media clock, pause and scrubbing
+positions, and visibility/lifecycle conditions for enabling vsync animation.
+
+### Performance follow-up — smooth clock and buffered drawing
+
+For devices that still show a jittery waveform after the initial vsync fix,
+the rendering pipeline has been tightened further:
+
+1. **Monotonic visual clock.** `WaveformFrameClock` interpolates the current
+   playback position against Android's monotonic clock, with the active
+   ExoPlayer playback speed. It does not blindly adopt jittery raw
+   `currentPosition` samples from the player. Small drift is corrected
+   gradually (at most 7 ms per 400 ms); real seeks, loop restarts, changes
+   of speed, pause and resume snap to the actual player position.
+   Audio playback itself is unchanged.
+2. **Off-thread bitmap tile rendering.** A first optimization buffered a
+   `Path`, but the UI thread still **rasterized that complex Path twice
+   on every frame**. This could make Play/Pause and speed controls sluggish.
+   Now a separate low-priority worker draws 20 seconds of peaks plus
+   up to 10 seconds of padding into one small transparent Bitmap.
+   Each animation frame just draws this ready Bitmap with an X translation
+   and two lightweight color tints. Pending tile requests are bounded
+   and obsolete ones are discarded while scrubbing.
+3. **Less main-thread garbage.** Time labels are rebuilt only when the
+   whole displayed second changes; the previous two `String.format`
+   calls on every frame have been removed.
+4. **Background decoding yields to the player.** The worker uses Android's
+   `THREAD_PRIORITY_BACKGROUND`, sleeps 2 ms after every 12 decoded
+   output buffers and posts progress no more than once per ~750 ms.
+   You should see `Generating waveform… XX%` rather than a static
+   loading message while the first full-track analysis is running.
+   It still writes the same `waveforms-v2` format; no cache purge required.
+5. **Low-overhead diagnostics.** If a frame or draw takes at least 90 ms,
+   the waveform emits a throttled Logcat warning under the tag
+   `WaveformPerf` (no more than once per 10 seconds). These warnings
+   help distinguish a slow draw from an Android main-thread scheduling gap.
+
+**Important checks:** With music playing, watch whether the peaks glide
+steadily for 30 seconds on 1× and 0.7×; test once using an already cached
+waveform and once with a never-before-played song. Pause and scrub
+slowly, then try changing speed and A–B loop. The background waveform
+calculation should not freeze the rest of the Player UI. If it still does,
+capture the `WaveformPerf` Logcat lines and the Android frame timeline.
+
+### Follow-up — stable solid envelope instead of flickering thin bars
+
+The previous exclusive-color clipping removed double alpha blending, but
+**green shimmer remained during normal playback** on the phone. The remaining
+likely cause is the high-frequency pattern of very thin antialiased peak
+strokes. Their partially transparent gaps move by fractions of a screen
+pixel, so the GPU interpolates their brightness differently every frame.
+
+The prepared bitmap now contains an **opaque, continuous filled amplitude
+envelope**: one full-width destination pixel column from the center line
+up and down to the maximum peak of all 50ms bins intersecting that pixel.
+This keeps each column opaque inside the waveform, including the played
+green region, while the bitmap itself can still slide subpixel-smoothly.
+It also retains very short transients that might fall between thin bars.
+
+The fast-scrub fallback now uses the same peak-per-pixel method, with
+pixel-aligned batched strokes to avoid switching back to a stripe pattern.
+Each background tile is also aligned to an **absolute pixel timeline
+starting at t=0**. Overlapping tiles therefore sample the same audio
+at the same source-pixel positions instead of shifting phase when a new
+tile is prepared. This prevents periodic shape/brightness changes as tiles
+replace each other.
+
+**Visual change:** the waveform is more of a solid audio-editor silhouette
+than a comb of separated vertical lines. Colors, A/B markers, zoom,
+scrub gestures, display cadence, background workers and the cached 50ms
+audio analysis remain unchanged. No audio decoding or cache purge is needed.
+
+### Verification
+Play a cached track without touching it for 20–30 seconds. The green
+amplitude region should look steady while smoothly scrolling; then
+seek rapidly in both directions and check that fallback and the new
+bitmap agree visually. Repeat on pause. Test Play/Pause and speed to
+ensure that there is no return of main-thread lag.
+
+### Green played-section shimmer — overlapping-alpha fix
+
+The first flicker fix kept peaks visible during fast scrubs and removed
+per-frame tint filters, but the played section still shimmered on some phones.
+Inspecting the renderer revealed a compositing problem: the entire waveform
+was first drawn in muted color, **then the already-played area was drawn
+again in green**. Both bitmaps have antialiased, partially transparent edges.
+As the wave slides by fractional screen pixels, the overlapping strokes'
+alpha blending changes perceived brightness and can make the green region
+pulse.
+
+The bitmap and fast-scrub fallback now use **two disjoint clipped regions**:
+green peaks exclusively from the left edge through the playhead, muted
+peaks exclusively from the playhead to the right edge. The green bitmap
+is never drawn over gray waveform strokes. No additional rendering passes
+or audio decoding were introduced; speed/seek/loop and 30fps animation are
+unchanged. Tests assert a common, smoothly moving clip boundary.
+
+**Device check:** Play a previously cached track and watch the green
+section for 20–30 seconds, then move the full-track slider quickly and
+check both colors as the fallback and ready bitmap switch. Neither green
+region brightness nor peak shape should pulse periodically.
+
+### Played-color flicker and fast-scrubbing visibility
+
+**Waveform data and progress text now use independent callbacks.** The
+decoder's `Generating waveform… 45%` messages used to pass `null` as
+waveform data, making the screen cancel tiles and clear the graph during
+analysis. Progress now updates only the status text. A track change clears
+the old graph once, and successful decoding installs the new graph once.
+
+**Both playback colors are rasterized in the background** into a pair of
+small, already-colored bitmaps. Per-frame GPU recoloring of the moving mask
+was removed. The familiar muted/green split is preserved.
+
+A fast seek may leave the visible time range outside the prepared tile
+before a replacement is ready. Instead of drawing an empty region, the
+view temporarily renders the current range from the already-cached 50ms
+peak values with two batched `Canvas.drawLines` calls. No MediaCodec, full
+Path rebuild, audio read or extra bitmap allocation occurs during this
+fallback. Tile generation is paused while dragging and resumed on release;
+outdated results are rejected so they cannot replace the currently visible
+range.
+
+**Phone checks:** Scrub the full-track SeekBar quickly back and forth
+while paused, then swipe the zoomed waveform across large distances.
+Peaks and their played-green section must remain visible rather than
+flashing blank. With a newly decoded file, updating progress percentages
+must not repeatedly clear the waveform. Also verify smooth 30fps playback
+and responsive Play/Pause and speed controls on a cached file.
+
+### Seek and pause/resume visual alignment
+
+A follow-up fixed a small backwards jump that occurred immediately after
+tapping or swiping the waveform/full-track SeekBar, or when pressing Play/Pause.
+The cause was that Media3 could still report the **old** media position just
+after accepting a seek. The waveform then re-anchored to that stale value,
+before jumping forward again to the requested position.
+
+PlaybackController now notifies PlayerScreen/WaveformView of the **intended
+target before `ExoPlayer.seekTo()`**, and separately reports the confirmed
+`onPositionDiscontinuity` event. A bounded seek guard prevents stale
+position samples from taking control during settlement. A second small
+`SEEK_ADJUSTMENT` event does not reset the timeline a second time.
+
+The interpolated waveform clock also **keeps its current visual position**
+when playback pauses, resumes or changes speed. Only its rate changes;
+minor clock differences are corrected gently instead of being turned into
+an immediate backwards jump.
+
+Test several small seeks (100–800 ms) and large seeks, repeated scrubs,
+pausing at different points in a second, resuming at 0.7×, and A–B loop
+restarts. The waveform should respond to each deliberate seek immediately
+and should not briefly start from the old location before retreating.
+
+### UI responsiveness after waveform generation
+
+A later phone test showed that the previous cached `Path` renderer still
+competed with the main thread: animation looked smoother, but the Play/Pause
+buttons and tempo SeekBar lagged as soon as waveform appeared.
+
+To prioritize the rest of the Player, `WaveformTileRenderer` now builds a
+small transparent waveform bitmap in a **separate background worker**.
+The only hot-path operations in `WaveformView.onDraw()` are translating and
+drawing the already-rasterized bitmap, drawing the playhead, markers and
+cached time labels. Audio sample aggregation and peak rasterization never
+run inside the main-thread draw callback.
+
+The animation rate is now capped at **about 30 FPS**, not a continuous
+full-refresh 60+ FPS loop. The playback position still comes from the
+monotonic smoothed clock, and the waveform still scrolls smoothly.
+The helper limits tile images to **two viewport widths maximum** and keeps
+only one running and one queued tile-render request. Rapid track seeking
+discards old requests without blocking UI input.
+
+The underlying waveform decoding remains a low-priority background task.
+No new MediaCodec resources are allocated by this drawing change,
+and the `waveforms-v2` disk cache does not need to be reset.
+
+**First check:** start an already-cached track and repeatedly use Play/Pause,
+tempo slider and Prev/Next. Compare with Player before waveform appeared.
+Then open an uncached file, wait for its waveform, and test the same controls.
+If there are still slowdowns, please collect the `WaveformPerf` Logcat
+warnings and note whether delays occur only while the waveform is visible.
+
+### Stability and touch spacing
+
+The waveform was enlarged from **112 dp to 176 dp** and given dedicated
+gaps before the full-track SeekBar and before Prev/−10s/Play/+10s/Next.
+This makes precise seeking easier and reduces accidental skip-button taps.
+
+**Periodic waveform shimmer has been fixed at the drawing level.**
+Previously, the renderer grouped peaks into bars aligned to the *moving
+viewport*, so neighboring peaks kept entering/leaving a screen bar as the
+playhead moved. The bars changed height every few pixels, even though the
+underlying cached sound was unchanged.
+
+Now rendered peak groups are anchored to the track's **absolute 50ms sample
+timeline**. They have stable amplitudes at a fixed zoom and only translate
+along the X axis when playing or scrubbing. Grouping changes only when the
+zoom level or screen width changes, not every time playback advances.
+No waveform cache refresh or re-decoding is necessary for this fix.
+
+The waveform follows your finger while scrubbing; actual player seeks are
+throttled to roughly **80 ms** between commands, plus a final seek on release,
+rather than overwhelming Media3 with a seek every touch event. An A/B loop
+still constrains seeks to the active loop interval as before.
+
+### Higher-resolution waveform, compact cache
+
+The waveform now samples one peak every **50 milliseconds** of audio.
+A 20-second viewport can contain **400 peak values**, instead of only a
+handful when 512 peaks were spread across the entire file. Drawing only
+the visible window keeps each screen refresh lightweight.
+
+Data is stored in `filesDir/waveforms-v2` with an atomic versioned format:
+~4.8 KB for four minutes, no more than ~30 KB for 25 minutes. The old
+`waveforms-v1` cache is intentionally not reused: each visited song needs
+**one background re-analysis after this update**, then loads quickly again.
+No PCM audio is kept in memory. Only one waveform worker runs at a time,
+sharing a maximum of two active decoders with BPM and Batch BPM.
+
+The existing 25-minute track limit and 120-second decode timeout remain.
+Even when a waveform cannot be generated, playback is unaffected.
+
+### Device checks
+1. Play a song of several minutes: verify that the waveform shows only
+   about 20 seconds with visible changes in amplitude, and moves with
+   playback rather than shrinking the whole song.
+2. Swipe **left** on the waveform: the music advances. Swipe **right**:
+   rewind. Swiping over a waveform must not change the app tab.
+3. Tap a beat/pause near the middle of the displayed local window and
+   verify precise seeking. Try repeated short swipes and long holds.
+4. Press the ordinary **A** and **B** buttons: narrow markers should
+   appear if within the visible window; no long-press gesture changes them.
+5. Turn on an A/B loop and verify that the highlighted range and seek
+   constraints still work.
+6. Play the same file again or reopen after a full restart: the cached
+   high-resolution wave should appear without a full decode.
+7. Perform Batch BPM detection while loading a new waveform, then
+   verify responsive playback, UI and tab swipes elsewhere.
+8. Test a short track, seek near the end, and try unsupported/long media.
+9. Pause playback and slowly drag the same waveform segment back/forth;
+   its peaks should **slide smoothly** without cycling through different
+   heights or visibly rebuilding at regular intervals.
+10. Try precise seeking near waveform, full-track slider and transport
+    buttons: increased spacing should prevent accidental +10s/−10s actions.
+11. Play a track at 1.0× and 0.7×, watch waveform movement for several
+    seconds: no regular 120ms steps; peaks should move continuously.
+12. Pause the song: waveform must become completely still. Resume playback,
+    switch to Library, then return to Player: animation should restart only
+    when Player is visible and audio is playing.
+13. Move the full-track SeekBar and scrub the zoomed waveform while playing:
+    both respond to the finger, without fighting the frame animation.
+14. Try an A–B loop: the waveform must move smoothly between A and B and
+    jump to A precisely when ExoPlayer seeks back.
+
+Android Back, MediaSessionService and background playback remain stage 09.
+GitHub Actions is manual-only and was not run automatically.
+
+## Iteration 09 — Background playback and Android MediaSession
+
+The music player now runs as a **Media3 MediaSessionService**. ExoPlayer,
+the current queue, track, loop boundaries and tempo are owned by
+`MusicPlaybackService`, not `MainActivity`. The four UI tabs attach
+to the existing playback controller through a protected same-process Binder
+and detach on Activity destruction; leaving the UI does **not** release
+or pause the audio engine.
+
+When playback resumes from a lock-screen/headset control, the A–B ticker wakes immediately rather than waiting for the relaxed 1-second background heartbeat.
+
+When music plays, Media3's standard media notification and system player
+provide Play/Pause, Next and Previous. It uses the same queue operations
+as the Player tab, so a user playlist's manually chosen order stays
+authoritative. The current track's name is included in MediaMetadata;
+tapping the media notification opens the app on the **Player** tab.
+The system seek action goes through the same A–B constrained seek logic
+as in-app navigation. We intentionally preserve ExoPlayer's single
+currently decoded song and the app's PlaybackQueue so playlist drag/reorder
+does not restart a playing track.
+
+A media playback foreground service is declared in AndroidManifest.xml with
+`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK` and
+`WAKE_LOCK`; no general filesystem permission is introduced.
+Media3 manages the foreground notification. Audio focus is enabled
+with media/music AudioAttributes; unplugging a wired/Bluetooth output
+uses the standard noisy-route pause handling. CPU wake mode supports
+screen-off playback. Because the MediaSession service is exported for
+standard system/assistant controllers, internal local Binder access is
+limited by a random app-private token.
+
+### Android Back behavior
+
+- **Player → Library** when playing from the virtual **All Tracks** source.
+- **Player → Queue** when the current source is a **user playlist**.
+- **Queue or Playlists → Library**.
+- **Library → background the app** without calling Play/Pause or release.
+
+The source-aware routing only changes the visible tab and never mutates
+the selected track, A–B loop, source list or queue position.
+Android 13+ uses the platform Back callback; older versions use
+`onBackPressed`.
+
+### Testing on an Android phone — do not merge before checking
+
+1. Build the branch, play a track and press **Home**. Playback should
+   continue, with a system media player/notification visible. Try
+   its Play/Pause and Next/Previous controls and verify the app queue.
+2. Turn the screen off for at least a few minutes, unlock, then tap
+   the media notification. The playing song, position, speed, loop and
+   selected queue should be retained.
+3. While playing, remove the app from **recent apps**. Audio should
+   continue through the foreground service. Reopen the app from the
+   launcher or media notification; it must reconnect to the existing
+   service rather than create a second player.
+4. Test Back from Player in an All Tracks song (Library) and from a
+   custom playlist song (Queue). Back from Library should minimize;
+   no Back sequence is allowed to stop or reset playback.
+5. Check **Bluetooth/headset** Play/Pause/Next/Previous and unplugging a
+   headphone. Test an incoming call/audio-focus interruption and resume
+   to ensure focus is handled correctly by Media3.
+6. Run a 2–3-second A–B loop at 0.7×, lock the screen and later return
+   to the app. The same loop must still be active and play continuously.
+7. Use controls on the system media panel to scrub and skip tracks;
+   make sure that active A–B boundaries are respected. Rename or reorder
+   an active playlist after returning to the foreground.
+8. Rotate the device (Activity recreation) and reopen from notification.
+   The existing audio engine must remain running. Stop playback via
+   system Stop if available; force-stop from Android Settings should
+   intentionally terminate audio.
+9. Repeat on Android 13+ and older versions if available, and compare
+   system gesture Back with the bottom navigation. Some OEM background
+   battery policies can restrict service lifetime independently of app code.
+
+`MainActivity.onDestroy` deliberately does **not** call
+`PlaybackController.release()`; only `MusicPlaybackService.onDestroy`
+releases ExoPlayer and MediaSession.
+
+GitHub Actions remains `workflow_dispatch` only; no automatic build
+was launched. Full Android Gradle compilation and hardware-device
+validation are not available in the current tooling and are pending.
+
+## Next: stage 10 — optional high-quality time-stretch DSP
+
+The remaining roadmap step is to assess a fidelity-oriented DSP for
+0.8×–1.1× and integrate it only if listening tests beat Media3's current
+Sonic-based speed control without crackling. The current playback
+pipeline is not modified in this service iteration.
+
+## Iteration 10A — DSP foundation and licensing evaluation
+
+The first 10A commit used Sonic alone; the later R3 integration and on-device test resulted in R3 becoming the default engine.
+The construction of ExoPlayer, audio focus handling and wakelock configuration
+now lives in the isolated AudioEngineFactory. This prepares a controlled future
+RenderersFactory-based native time-stretch integration without touching the
+MediaSessionService or Activity lifecycle.
+
+TimeStretchPlanner defines and tests tempo-to-duration conversion, preserving
+pitch, with dance-quality priority at 0.80×–1.10×. For listening comparisons,
+see [docs/10A-audio-dsp.md](docs/10A-audio-dsp.md) and the optional Windows
+[Rubber Band R3 render script](tools/dsp/render-r3-samples.ps1). The script
+requires FFmpeg and the Rubber Band command-line tool installed separately.
+It is **not** a live DSP implementation in the Android player.
+
+No GPL library sources or binaries are included in the Android build, no
+licence change has been made to the app, and GitHub Actions remains manual-only.
+
+Run: ./gradlew :app:assembleDebug :app:testDebugUnitTest
+
+## Stage 10A-native — real-time Rubber Band R3 on Android (opt-in)
+
+The experimental native build integrated Rubber Band R3 inside
+ExoPlayer's AudioSink. After a successful listening comparison, **R3 is now the default**;
+Sonic remains available using `-Prubberband=false`.
+
+On Windows, install Android NDK/CMake, then:
+
+    .\tools\dsp\prepare-rubberband.ps1
+    .\gradlew.bat :app:assembleDebug -Prubberband=true
+
+This builds an experimental arm64-v8a APK (R3 is selected by the build flag;
+there is no engine label in Player). Test at 0.8–1.1 speeds, including A–B looping and
+background playback. To switch back, build without the Gradle flag.
+
+**Before sharing an R3-enabled APK with friends or publishing it**, choose
+and satisfy GPL-2.0-or-later conditions for the *combined app* (including
+source-code availability to recipients), or obtain a Rubber Band commercial
+licence. This change does not itself relicense the app. See
+[docs/10A-audio-dsp.md](docs/10A-audio-dsp.md) for setup, design,
+limitations, GPL guidance and tests.
+
+We have not compiled this Android NDK configuration in the assistant
+environment (SDK/NDK unavailable) and the new native path requires a
+first phone build before the PR can be merged.
+
+## Stage 10B — R3 default, visual polish and locally signed APK
+
+After a device comparison against Sonic at 0.70×, Rubber Band R3 is now
+the **default** engine. Use `-Prubberband=false` to build the previous
+Sonic path. Regular R3 builds require Android NDK, CMake, and official
+pinned Rubber Band source from `tools/dsp/prepare-rubberband.ps1`.
+
+UI changes: primary buttons are rounded; the background is a darker
+slate gray with readable light list surfaces, and the selected navigation
+tab is highlighted in teal.
+
+To create a release APK signed with **your own long-lived key**, follow
+[docs/10B-signed-release.md](docs/10B-signed-release.md). The helper
+scripts are `tools/release/create-keystore.ps1` (once) and
+`tools/release/build-release.ps1` (each release). Keys and passwords
+are never committed.
+
+Play Protect may still request a scan when the APK is sideloaded.
+Installing through Google Play internal testing is preferable for friends.
+An R3-enabled APK must not be sent to friends until the chosen GPL
+source-distribution obligations or a commercial licence are satisfied.
+
+Caution: the previously installed debug build has a **different signature**
+from release; installing release over debug does not preserve existing app
+data automatically. Back up any playlists or settings before uninstalling.
+
+## Stage 10B — fixed Player footer and one-shot playlist Shuffle
+
+The Player has a scrolling audio/waveform area and a **fixed bottom dock**
+containing the playback end mode, A/B marker controls, loop clearing and the
+**BPM adjustments** button. Track and waveform workers do not change the
+dock's position. The engine's experimental badge was removed.
+
+A small persistent app footer displays **Track X of Y** above the
+`N tracks loaded` status. A dedicated fixed-size field in the **lower
+right** shows waveform-generation progress. That field reserves its
+space even when no waveform message is present, preventing visual jumps.
+
+The Playlists tab now adds a **Shuffle** button to its top action row and
+a slightly larger gap above the playlist dropdown. Shuffle is an immediate,
+one-shot **permanent reorder of the current playlist's saved URI list**:
+it is not an end-of-track play mode. Audio files are never moved, and
+unavailable file references remain in the list. If that playlist is
+currently playing, the playback queue order is updated without
+restarting or pausing the active track.
+
+### Device acceptance check
+
+1. Start a track that needs waveform generation. Its status must appear
+   in the bottom-right field without moving the waveform or controls.
+2. Confirm BPM adjustments / mode / A / B / clear-loop remain at the
+   bottom on a small phone and after the waveform finishes.
+3. Confirm Track X of Y moves to the app footer and follows Next/Previous.
+4. In Playlists, tap Shuffle: each playlist gets a new saved order;
+   closing and reopening the app retains it. The current song must
+   continue without restarting if its active playlist is shuffled.
+5. Check drag-and-drop reorder still works after shuffle and other
+   playlists retain their own order.
+
+## BPM Player branding
+
+The launcher name and adaptive vector icon now use **BPM Player**. Store listing
+SVG masters, English/Russian descriptions and PNG export script are under
+[`branding/`](branding/). The Android application ID is unchanged.

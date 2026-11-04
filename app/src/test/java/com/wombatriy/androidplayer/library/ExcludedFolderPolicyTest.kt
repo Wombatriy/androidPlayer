@@ -10,6 +10,20 @@ class ExcludedFolderPolicyTest {
         assertFalse(ExcludedFolderPolicy.shouldTraverse("Excluded"))
     }
 
+    @Test fun explicitlySelectedDestinationIsSkippedByDocumentIdentity() {
+        val target = ExcludedFolderPolicy.FolderIdentity(
+            "com.android.externalstorage.documents", "primary:Music/Archive"
+        )
+        assertFalse(ExcludedFolderPolicy.shouldTraverse(
+            "Archive", target, setOf(target)
+        ))
+        assertTrue(ExcludedFolderPolicy.shouldTraverse(
+            "Archive", ExcludedFolderPolicy.FolderIdentity(
+                "other.provider", "primary:Music/Archive"
+            ), setOf(target)
+        ))
+    }
+
     @Test fun otherDirectoriesStayTraversable() {
         assertTrue(ExcludedFolderPolicy.shouldTraverse("jazz"))
         assertTrue(ExcludedFolderPolicy.shouldTraverse("excluded-backup"))

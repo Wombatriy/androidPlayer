@@ -1,4 +1,4 @@
-# Android Player — iterative roadmap
+# BPM Player — iterative roadmap
 
 We work in small feature branches and PRs based on `main`.
 A PR requires a manual phone test before merging. CI is manual-only: no push/PR-triggered runs.

@@ -11,6 +11,7 @@ import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import android.graphics.Color
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
@@ -427,41 +428,69 @@ class MainActivity : Activity() {
     }
 
     private fun confirmFileAction(track: Track, action: LibraryFileService.Action) {
-        val text = if (action == LibraryFileService.Action.DELETE) {
-            "Permanently delete this audio file from your PHONE?\n\n" +
-                "${track.name}\n\nThis action cannot be undone."
+        val isDelete = action == LibraryFileService.Action.DELETE
+        val message = if (isDelete) {
+            "Delete this audio file from your device?\n\n" +
+                "${track.name}\n\nThe storage provider may place it in Trash."
         } else {
-            "Move this file out of your library into an excluded/ folder, " +
-                "removing the original only after checking the copy.\n\n" +
-                "${track.name}\n\nThe first time you must select the PARENT " +
-                "of your music folder (for example music/ for music/jazz/). " +
-                "BPM and waveform caches will be removed."
+            "Move this track into a destination folder of your choice?\n\n" +
+                "${track.name}\n\nThe original will only be removed after " +
+                "the new copy has been verified (SHA-256). " +
+                "Saved BPM and waveform data will be cleared."
         }
         AlertDialog.Builder(this)
-            .setTitle(if (action == LibraryFileService.Action.DELETE)
-                "Delete audio permanently?" else "Exclude this audio file?")
-            .setMessage(text)
+            .setTitle(if (isDelete) "Delete audio from device?" else "Exclude from Library?")
+            .setMessage(message)
             .setNegativeButton("Cancel", null)
-            .setPositiveButton(if (action == LibraryFileService.Action.DELETE)
-                "Delete permanently" else "Move to excluded") { _, _ ->
-                if (action == LibraryFileService.Action.EXCLUDE) {
-                    val excludedParent = prefs.getString(KEY_EXCLUDED_PARENT, null)?.let(Uri::parse)
-                    val hasPermission = excludedParent != null &&
-                        contentResolver.persistedUriPermissions.any {
-                            it.uri == excludedParent && it.isWritePermission && it.isReadPermission
-                        }
-                    if (hasPermission) performFileAction(track, action, excludedParent)
-                    else {
-                        pendingExclude = track
-                        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                                Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
-                                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-                        }, EXCLUDED_PARENT_REQUEST)
-                    }
-                } else performFileAction(track, action, null)
+            .setPositiveButton(if (isDelete) "Delete" else "Continue") { _, _ ->
+                if (isDelete) performFileAction(track, action, null)
+                else selectExcludeDestination(track)
             }
             .show()
+    }
+
+    /**
+     * The destination is a real, user-selected SAF directory, not a parent.
+     * A remembered grant can be reused or replaced at any time.
+     * The old excludedParentTree preference is deliberately ignored.
+     */
+    private fun selectExcludeDestination(track: Track) {
+        val saved = prefs.getString(KEY_EXCLUDED_DESTINATION, null)?.let(Uri::parse)
+        val canUseSaved = saved != null &&
+            contentResolver.persistedUriPermissions.any {
+                it.uri == saved && it.isWritePermission && it.isReadPermission
+            }
+        if (!canUseSaved) {
+            openExcludeFolderPicker(track)
+            return
+        }
+        val label = prefs.getString(KEY_EXCLUDED_DESTINATION_LABEL, "saved folder")
+            ?: "saved folder"
+        AlertDialog.Builder(this)
+            .setTitle("Choose exclude destination")
+            .setItems(arrayOf("Use saved folder: $label", "Choose another folder…")) { _, choice ->
+                if (choice == 0) {
+                    performFileAction(track, LibraryFileService.Action.EXCLUDE, saved)
+                } else {
+                    openExcludeFolderPicker(track)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun openExcludeFolderPicker(track: Track) {
+        pendingExclude = track
+        val initial = prefs.getString(KEY_EXCLUDED_DESTINATION, null)
+            ?: prefs.getString(KEY_TREE_URI, null)
+        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+            if (!initial.isNullOrBlank()) {
+                putExtra(DocumentsContract.EXTRA_INITIAL_URI, Uri.parse(initial))
+            }
+        }, EXCLUDED_DESTINATION_REQUEST)
     }
 
     private fun performFileAction(
@@ -541,24 +570,41 @@ class MainActivity : Activity() {
     @Deprecated("Legacy folder picker is retained for this framework-only iteration.")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == EXCLUDED_PARENT_REQUEST) {
+        if (requestCode == EXCLUDED_DESTINATION_REQUEST) {
             val track = pendingExclude
             pendingExclude = null
             if (resultCode != RESULT_OK || track == null) return
-            val selectedParent = data?.data ?: return
-            val activeLibrary = prefs.getString(KEY_TREE_URI, null)?.let(Uri::parse)
-            if (selectedParent == activeLibrary) {
-                Toast.makeText(this, "Choose the parent folder outside the selected music library, e.g. music/ instead of jazz/.", Toast.LENGTH_LONG).show()
+            val destination = data?.data ?: return
+            val flags = data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            if ((flags and Intent.FLAG_GRANT_READ_URI_PERMISSION) == 0 ||
+                (flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION) == 0) {
+                Toast.makeText(this,
+                    "Select a folder allowing both reading and writing.",
+                    Toast.LENGTH_LONG).show()
                 return
             }
-            val granted = data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             try {
-                contentResolver.takePersistableUriPermission(selectedParent, granted)
-                prefs.edit().putString(KEY_EXCLUDED_PARENT, selectedParent.toString()).apply()
-                performFileAction(track, LibraryFileService.Action.EXCLUDE, selectedParent)
+                contentResolver.takePersistableUriPermission(destination, flags)
+                // Remember the chosen destination itself, not its parent.
+                // Previous invalid excludedParentTree preferences are discarded.
+                val displayName = destination.lastPathSegment
+                    ?.substringAfterLast('/')?.substringAfterLast(':')
+                    ?.ifBlank { "selected folder" } ?: "selected folder"
+                val remembered = prefs.getStringSet(KEY_EXCLUDED_DESTINATION_TREES, emptySet())
+                    .orEmpty().toMutableSet()
+                remembered.add(destination.toString())
+                prefs.edit()
+                    .putString(KEY_EXCLUDED_DESTINATION, destination.toString())
+                    .putString(KEY_EXCLUDED_DESTINATION_LABEL, displayName)
+                    .putStringSet(KEY_EXCLUDED_DESTINATION_TREES, remembered)
+                    .remove(KEY_EXCLUDED_PARENT_LEGACY)
+                    .apply()
+                performFileAction(track, LibraryFileService.Action.EXCLUDE, destination)
             } catch (error: Exception) {
-                Toast.makeText(this, "Destination access denied: ${error.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(this,
+                    "Cannot use selected folder: ${error.message}. You can choose another.",
+                    Toast.LENGTH_LONG).show()
             }
             return
         }
@@ -571,7 +617,10 @@ class MainActivity : Activity() {
             val previous = prefs.getString(KEY_TREE_URI, null)
             if (previous != uri.toString()) {
                 // The excluded/ destination is configured per source library.
-                prefs.edit().remove(KEY_EXCLUDED_PARENT).apply()
+                prefs.edit().remove(KEY_EXCLUDED_DESTINATION)
+                    .remove(KEY_EXCLUDED_DESTINATION_LABEL)
+                    .remove(KEY_EXCLUDED_DESTINATION_TREES)
+                    .remove(KEY_EXCLUDED_PARENT_LEGACY).apply()
                 // Do not apply the old folder's scroll position to a new library.
                 libraryScreen.restorePosition(0, 0)
                 prefs.edit().putInt(KEY_SCROLL_INDEX, 0).putInt(KEY_SCROLL_OFFSET, 0).apply()
@@ -755,8 +804,11 @@ class MainActivity : Activity() {
     companion object {
         const val ACTION_SHOW_PLAYER = "com.wombatriy.androidplayer.SHOW_PLAYER"
         private const val FOLDER_REQUEST = 41
-        private const val EXCLUDED_PARENT_REQUEST = 42
-        private const val KEY_EXCLUDED_PARENT = "excludedParentTree"
+        private const val EXCLUDED_DESTINATION_REQUEST = 42
+        private const val KEY_EXCLUDED_PARENT_LEGACY = "excludedParentTree"
+        private const val KEY_EXCLUDED_DESTINATION = "excludedDestinationTree"
+        private const val KEY_EXCLUDED_DESTINATION_LABEL = "excludedDestinationLabel"
+        private const val KEY_EXCLUDED_DESTINATION_TREES = "excludedDestinationTrees"
         private const val KEY_TREE_URI = "treeUri"
         private const val KEY_SCROLL_INDEX = "scrollIndex"
         private const val KEY_SCROLL_OFFSET = "scrollOffset"

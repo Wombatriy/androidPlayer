@@ -17,7 +17,7 @@ import java.util.concurrent.Executors
  * Destructive SAF operations, always run off the UI thread and only after
  * explicit confirmation from MainActivity.
  *
- * "Exclude" is a verified copy into a separately authorised parent/excluded,
+ * "Exclude" is a verified copy into a user-selected destination folder,
  * followed by deletion of the original. A failed or unverified copy NEVER
  * causes deletion of the original source file.
  */
@@ -44,7 +44,7 @@ class LibraryFileService(context: Context) {
         action: Action,
         track: Track,
         libraryTree: Uri,
-        destinationParentTree: Uri?,
+        destinationTree: Uri?,
         tracks: List<Track>,
         callback: (Result<Outcome>) -> Unit
     ) {
@@ -63,14 +63,20 @@ class LibraryFileService(context: Context) {
                         null
                     }
                     Action.EXCLUDE -> {
-                        val parentTree = requireNotNull(destinationParentTree) {
-                            "Select an excluded destination first."
+                        val targetTree = requireNotNull(destinationTree) {
+                            "Choose the folder where excluded files should be saved."
                         }
-                        checkWritePermission(parentTree)
-                        check(parentTree != libraryTree) {
-                            "Choose the parent of your music folder, not the library itself."
+                        checkWritePermission(targetTree)
+                        // SAF URIs may differ while referring to the same
+                        // document root; compare provider identity, not paths.
+                        val sameRoot = targetTree.authority == libraryTree.authority &&
+                            DocumentsContract.getTreeDocumentId(targetTree) ==
+                            DocumentsContract.getTreeDocumentId(libraryTree)
+                        check(!sameRoot) {
+                            "Destination cannot be the music Library root. " +
+                                "Select a separate folder, e.g. music/excluded."
                         }
-                        moveWithVerifiedCopy(track, libraryTree, parentTree)
+                        moveWithVerifiedCopy(track, targetTree)
                     }
                 }
 
@@ -94,37 +100,16 @@ class LibraryFileService(context: Context) {
     }
 
     /**
-     * A user-selected parent (e.g. music/) contains or receives excluded/.
-     * The library grant for music/jazz/ cannot create the sibling itself.
+     * Destination is the exact folder the user selected. Never infer a parent,
+     * create an extra "excluded" level, or parse SAF document IDs as paths.
+     * A separately granted destination can be anywhere the provider allows.
      */
-    private fun moveWithVerifiedCopy(track: Track, libraryTree: Uri, parentTree: Uri): String {
-        val parent = DocumentFile.fromTreeUri(app, parentTree)
-            ?: error("Cannot access the selected destination parent.")
-        require(parent.isDirectory && parent.canWrite()) {
-            "The selected destination parent is not writable."
+    private fun moveWithVerifiedCopy(track: Track, destinationTree: Uri): String {
+        val excluded = DocumentFile.fromTreeUri(app, destinationTree)
+            ?: error("Cannot access the selected destination folder.")
+        require(excluded.isDirectory && excluded.canWrite()) {
+            "The selected destination folder is not writable. Choose another one."
         }
-        // Confirm this folder directly contains the selected Library root.
-        // A writable grant to an unrelated folder must not silently relocate audio.
-        val libraryRootId = DocumentsContract.getTreeDocumentId(libraryTree)
-        val siblings = parent.listFiles()
-        require(siblings.any { candidate ->
-            candidate.isDirectory &&
-                runCatching { DocumentsContract.getDocumentId(candidate.uri) }
-                    .getOrNull() == libraryRootId
-        }) {
-            "Choose the direct parent of the Library folder " +
-                "(for example music/ for music/jazz/)."
-        }
-        val existing = siblings.firstOrNull {
-            it.name.equals("excluded", ignoreCase = true)
-        }
-        val excluded = when {
-            existing == null -> parent.createDirectory("excluded")
-                ?: error("Could not create the excluded folder.")
-            existing.isDirectory -> existing
-            else -> error("An item named excluded exists but is not a folder.")
-        }
-        require(excluded.canWrite()) { "Excluded folder is read-only." }
         require(excluded.listFiles().none {
             it.name.equals(track.name, ignoreCase = true)
         }) { "A file with the same name already exists in excluded. Nothing was moved." }
@@ -134,6 +119,11 @@ class LibraryFileService(context: Context) {
             ?: error("The provider refused to create the destination file.")
         var copiedAndVerified = false
         try {
+            // Some providers silently append or rewrite a name during
+            // createFile. Abort instead of silently moving under a new name.
+            require(newFile.name.equals(track.name, ignoreCase = true)) {
+                "The storage provider changed the destination filename. Original kept."
+            }
             val sourceDigest = MessageDigest.getInstance("SHA-256")
             var sourceBytes = 0L
             resolver.openInputStream(track.uri)?.use { input ->

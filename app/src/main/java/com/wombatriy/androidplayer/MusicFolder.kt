@@ -3,6 +3,8 @@ package com.wombatriy.androidplayer
 import android.content.Context
 import android.net.Uri
 import android.os.SystemClock
+import android.provider.DocumentsContract
+import com.wombatriy.androidplayer.library.ExcludedFolderPolicy
 import androidx.documentfile.provider.DocumentFile
 import java.util.ArrayDeque
 import java.util.concurrent.CancellationException
@@ -26,6 +28,18 @@ object MusicFolder {
         cancelled: () -> Boolean = { false }
     ): List<Track> {
         val root = DocumentFile.fromTreeUri(context, treeUri) ?: return emptyList()
+        // SAF grants refer to document identities, not reliable filesystem paths.
+        // A destination may be inside this tree and have any display name.
+        val excluded = context.getSharedPreferences("library", Context.MODE_PRIVATE)
+            .getStringSet("excludedDestinationTrees", emptySet()).orEmpty()
+            .mapNotNull { encoded ->
+                runCatching {
+                    val uri = Uri.parse(encoded)
+                    ExcludedFolderPolicy.FolderIdentity(
+                        uri.authority, DocumentsContract.getTreeDocumentId(uri)
+                    )
+                }.getOrNull()
+            }.toSet()
         val result = ArrayList<Track>()
         val pending = ArrayDeque<DocumentFile>()
         pending.addLast(root)
@@ -52,9 +66,14 @@ object MusicFolder {
                     throw CancellationException("Folder scan cancelled")
                 }
                 if (file.isDirectory) {
-                    // Excluded tracks must stay hidden even when the user
-                    // later selects the parent music folder as Library root.
-                    if (com.wombatriy.androidplayer.library.ExcludedFolderPolicy.shouldTraverse(file.name)) {
+                    // A folder named excluded is always skipped. Selected
+                    // destinations with any other name are skipped by SAF ID.
+                    val identity = runCatching {
+                        ExcludedFolderPolicy.FolderIdentity(
+                            file.uri.authority, DocumentsContract.getDocumentId(file.uri)
+                        )
+                    }.getOrNull()
+                    if (ExcludedFolderPolicy.shouldTraverse(file.name, identity, excluded)) {
                         pending.addLast(file)
                     }
                 } else if (file.isFile) {
