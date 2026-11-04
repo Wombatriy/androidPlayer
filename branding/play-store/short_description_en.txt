@@ -1,0 +1,1 @@
+Music player with BPM detection, pitch-preserving speed control and A–B loops.

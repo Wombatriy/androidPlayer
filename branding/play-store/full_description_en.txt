@@ -1,0 +1,20 @@
+BPM Player — a focused music player for dancers, DJs and everyone who likes to control the tempo of their favorite tracks.
+
+Change tempo without changing pitch
+Slow music down or speed it up while preserving its musical key. Rubber Band R3 audio processing makes tempo changes smoother, particularly when adjusting a track slightly for dance practice or a set.
+
+Know the BPM
+Automatically estimate the tempo of local tracks, compare it with BPM values embedded in filenames, tap along to measure it, or enter a correction manually.
+
+Practice and prepare
+Set A–B loop points, navigate the waveform, jump forward and backward by 10 seconds, and build playlists in any order. Shuffle a selected playlist when you want a fresh sequence.
+
+Keep listening
+Music keeps playing in the background, with transport controls available through Android's media notification and lock screen.
+
+Your own music library
+Choose a folder using Android's file picker. BPM Player reads supported audio files from your device without uploading your music to a service.
+
+Designed for dancers, dance instructors, DJs and active listening.
+
+Notes: Automatic BPM estimation is approximate and may need manual correction for complex rhythms. Playback quality depends on the recording and device.

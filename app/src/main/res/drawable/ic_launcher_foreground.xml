@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="1000"
+    android:viewportHeight="1000">
+    <!-- All artwork is inset into the adaptive-icon safe area. -->
+    <group android:translateX="165" android:translateY="165"
+        android:scaleX="0.67" android:scaleY="0.67">
+        <path android:fillColor="#F5F8EF" android:strokeColor="#182A28"
+            android:strokeWidth="27"
+            android:pathData="M137,25 L863,25 Q975,25 975,137 L975,863 Q975,975 863,975 L137,975 Q25,975 25,863 L25,137 Q25,25 137,25 Z"/>
+        <group>
+            <clip-path android:pathData="M141,186 L737,492 L141,812 Z"/>
+            <path android:fillColor="#135E3E" android:pathData="M115,150 L775,150 L775,855 L115,855 Z"/>
+            <path android:fillColor="#14A958"
+                android:pathData="M100,165 L800,165 L800,430 C665,364 604,433 520,477 C430,525 381,488 332,479 C238,458 201,520 100,607 Z"/>
+            <path android:fillColor="#6ADF55"
+                android:pathData="M100,156 L800,156 L800,327 C646,248 539,289 448,328 C361,363 308,355 258,325 C214,299 184,307 100,401 Z"/>
+            <path android:fillColor="#00000000" android:strokeColor="#183B2C"
+                android:strokeWidth="16" android:strokeLineCap="round"
+                android:pathData="M100,401 C184,307 214,299 258,325 C308,355 361,363 448,328 C539,289 646,248 800,327"/>
+            <path android:fillColor="#00000000" android:strokeColor="#183B2C"
+                android:strokeWidth="16" android:strokeLineCap="round"
+                android:pathData="M100,607 C201,520 238,458 332,479 C381,488 430,525 520,477 C604,433 665,364 800,430"/>
+        </group>
+        <path android:fillColor="#00000000" android:strokeColor="#142A25"
+            android:strokeWidth="22" android:strokeLineJoin="round"
+            android:strokeLineCap="round" android:pathData="M141,186 L737,492 L141,812 Z"/>
+        <!-- BPM letterforms are strokes so they scale without a bundled font. -->
+        <group android:translateX="319" android:translateY="807" android:rotation="-28">
+            <path android:fillColor="#00000000" android:strokeColor="#17372D"
+                android:strokeWidth="16" android:strokeLineJoin="round"
+                android:pathData="M0,-72 L0,0 M0,-72 L31,-72 C58,-72 58,-40 31,-39 L0,-39 M31,-39 C61,-39 63,0 30,0 L0,0"/>
+            <path android:fillColor="#00000000" android:strokeColor="#17372D"
+                android:strokeWidth="16" android:strokeLineJoin="round"
+                android:pathData="M84,0 L84,-72 L111,-72 C153,-72 153,-31 112,-31 L84,-31"/>
+            <path android:fillColor="#00000000" android:strokeColor="#17372D"
+                android:strokeWidth="16" android:strokeLineJoin="round"
+                android:pathData="M167,0 L167,-72 L199,-20 L231,-72 L231,0"/>
+        </group>
+        <!-- BPM scale: long major ticks and shorter minor divisions. -->
+        <path android:fillColor="#00000000" android:strokeColor="#172B25"
+            android:strokeWidth="13" android:strokeLineCap="round"
+            android:pathData="M858,192 L931,192 M871,241 L931,241 M887,290 L931,290 M871,339 L931,339 M858,388 L931,388 M882,437 L931,437 M870,486 L931,486 M882,535 L931,535 M858,584 L931,584 M871,633 L931,633 M883,682 L931,682 M871,731 L931,731 M858,780 L931,780 M883,829 L931,829"/>
+    </group>
+</vector>

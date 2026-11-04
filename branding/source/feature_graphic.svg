@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="500" viewBox="0 0 1024 500">
+<defs>
+ <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0C302C"/><stop offset="1" stop-color="#122236"/></linearGradient>
+ <linearGradient id="glow" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#36D573"/><stop offset="1" stop-color="#73EB5B"/></linearGradient>
+</defs>
+<rect width="1024" height="500" fill="url(#bg)"/>
+<path d="M0 375 C150 262 220 465 360 386 S625 318 760 398 S920 329 1024 375 V500 H0 Z" fill="#0A8354" fill-opacity=".27"/>
+<path d="M0 432 C170 300 260 522 425 438 S725 358 890 439 S978 393 1024 421 V500 H0 Z" fill="#12AF61" fill-opacity=".22"/>
+<g transform="translate(46 74) scale(.37)">
+<defs><clipPath id="triangle"><path d="M141 186 L737 492 L141 812 Z"/></clipPath></defs>
+<rect x="25" y="25" width="950" height="950" rx="112" fill="#F5F8EF" stroke="#182A28" stroke-width="27"/>
+<g clip-path="url(#triangle)">
+ <rect x="115" y="150" width="660" height="705" fill="#135E3E"/>
+ <path d="M100 165 H800 V430 C665 364 604 433 520 477 C430 525 381 488 332 479 C238 458 201 520 100 607 Z" fill="#14A958"/>
+ <path d="M100 156 H800 V327 C646 248 539 289 448 328 C361 363 308 355 258 325 C214 299 184 307 100 401 Z" fill="#6ADF55"/>
+ <path d="M100 401 C184 307 214 299 258 325 C308 355 361 363 448 328 C539 289 646 248 800 327" fill="none" stroke="#183B2C" stroke-width="16" stroke-linecap="round"/>
+ <path d="M100 607 C201 520 238 458 332 479 C381 488 430 525 520 477 C604 433 665 364 800 430" fill="none" stroke="#183B2C" stroke-width="16" stroke-linecap="round"/>
+</g>
+<path d="M141 186 L737 492 L141 812 Z" fill="none" stroke="#142A25" stroke-width="22" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="317" y="811" transform="rotate(-28 317 811)" fill="#17372D" font-family="DejaVu Sans, sans-serif" font-size="88" font-weight="900" letter-spacing="-3">BPM</text>
+<g stroke="#172B25" stroke-width="13" stroke-linecap="round">
+ <path d="M858 192 H931 M871 241 H931 M887 290 H931 M871 339 H931 M858 388 H931 M882 437 H931 M870 486 H931 M882 535 H931 M858 584 H931 M871 633 H931 M883 682 H931 M871 731 H931 M858 780 H931 M883 829 H931"/>
+</g>
+<g fill="#17352C" font-family="DejaVu Sans, sans-serif" font-size="36" font-weight="800" text-anchor="end">
+ <text x="832" y="207">260</text><text x="832" y="403">200</text>
+ <text x="832" y="599">120</text><text x="832" y="795">80</text>
+</g></g>
+<g font-family="DejaVu Sans, sans-serif">
+ <text x="435" y="190" font-size="89" font-weight="800" letter-spacing="-3"><tspan fill="#79F05F">BPM</tspan><tspan fill="#F5FFF6"> Player</tspan></text>
+ <text x="442" y="256" font-size="31" fill="#D2EEE0" font-weight="500">Your music. Your tempo.</text>
+ <text x="444" y="314" font-size="21" fill="#B7D3CA">Precise tempo &#8226; Preserved pitch &#8226; A&#8211;B loops</text>
+</g>
+<g fill="url(#glow)" opacity=".9">
+<rect x="437" y="378.5" width="6" height="21" rx="3"/>
+<rect x="454" y="371.5" width="6" height="35" rx="3"/>
+<rect x="471" y="360.5" width="6" height="57" rx="3"/>
+<rect x="488" y="382.5" width="6" height="13" rx="3"/>
+<rect x="505" y="369.5" width="6" height="39" rx="3"/>
+<rect x="522" y="349" width="6" height="80" rx="3"/>
+<rect x="539" y="360" width="6" height="58" rx="3"/>
+<rect x="556" y="367.5" width="6" height="43" rx="3"/>
+<rect x="573" y="383.5" width="6" height="11" rx="3"/>
+<rect x="590" y="376.5" width="6" height="25" rx="3"/>
+<rect x="607" y="356.5" width="6" height="65" rx="3"/>
+<rect x="624" y="374" width="6" height="30" rx="3"/>
+<rect x="641" y="383" width="6" height="12" rx="3"/>
+<rect x="658" y="367" width="6" height="44" rx="3"/>
+<rect x="675" y="358.5" width="6" height="61" rx="3"/>
+<rect x="692" y="382" width="6" height="14" rx="3"/>
+<rect x="709" y="371.5" width="6" height="35" rx="3"/>
+<rect x="726" y="380" width="6" height="18" rx="3"/>
+</g>
+</svg>

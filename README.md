@@ -1,4 +1,4 @@
-# Android Player
+# BPM Player
 
 An Android music player designed for DJ practice and future BPM analysis.
 
@@ -932,3 +932,9 @@ restarting or pausing the active track.
    continue without restarting if its active playlist is shuffled.
 5. Check drag-and-drop reorder still works after shuffle and other
    playlists retain their own order.
+
+## BPM Player branding
+
+The launcher name and adaptive vector icon now use **BPM Player**. Store listing
+SVG masters, English/Russian descriptions and PNG export script are under
+[`branding/`](branding/). The Android application ID is unchanged.
