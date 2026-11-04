@@ -33,12 +33,17 @@ internal object LegalInformation {
             Source revision: $sourceRevision
             https://github.com/Wombatriy/androidPlayer
         """.trimIndent()
-        AlertDialog.Builder(context)
+        val dialog = AlertDialog.Builder(context)
             .setTitle("About & licences")
             .setMessage(legalNotice)
             .setPositiveButton("Licence texts") { _, _ -> showChoices(context) }
             .setNegativeButton("Close", null)
             .show()
+        dialog.findViewById<TextView>(android.R.id.message)?.apply {
+            Linkify.addLinks(this, Linkify.WEB_URLS)
+            movementMethod = LinkMovementMethod.getInstance()
+            linksClickable = true
+        }
     }
 
     private fun showChoices(context: Context) {

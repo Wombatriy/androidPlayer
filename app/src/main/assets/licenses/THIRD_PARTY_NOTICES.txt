@@ -15,9 +15,11 @@ Rubber Band Library 4.0.0 — Particular Programs Ltd.
   Pinned source revision: 1d95888bec3ae0a17c0c4af791810d5a63f6bc35
   Android R3 builds compile the upstream single/RubberBandSingle.cpp
   with our app/src/main/cpp/rubberband_jni.cpp adapter.
-  The official source checkout includes original COPYING and any bundled
-  FFT/resampler component notices (src/ext/kissfft/COPYING and
-  src/ext/speex/COPYING). Keep those intact in source releases.
+  The official source checkout includes original GNU GPL v2 COPYING,
+  KISS FFT's BSD-3-Clause copyright notice (src/ext/kissfft/COPYING)
+  and Speex' BSD-style copyright notices (src/ext/speex/COPYING).
+  Full verbatim upstream notice files are now accessible offline via
+  About & licences. Keep all the original files in source releases.
   Source distribution: package corresponding full source with the APK/AAB.
   The standard source repository alone does NOT bundle this native source.
 

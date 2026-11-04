@@ -5,6 +5,28 @@ Rubber Band R3. **Do not distribute the R3 build until every release-specific
 requirement below has been completed.** This guidance is practical information,
 not a substitute for a legal review.
 
+
+## What looks like a placeholder in the GPL?
+
+The full `LICENSE` and the bundled `GNU GPL v2/v3` documents are exact,
+**verbatim legal texts from their respective publishers**. Near the end,
+both licences contain an appendix titled **"How to Apply These Terms to
+Your New Programs"**, with examples using text such as `<year>`,
+`<name of author>` and `<one line to give the program's name>`.
+These are instructional EXAMPLES in the standard licence; **do not edit
+or fill them inside the licence itself**.
+
+The actual project-specific statement appears separately in
+`legal/COPYRIGHT.md` and `THIRD_PARTY_NOTICES.txt`. The owner of the
+contributions should confirm the publisher name and copyright attribution
+before publishing; a repository handle or project display name is not a
+substitute for confirming ownership.
+
+In-app legal documents are displayed as selectable text, and URL strings
+are converted to clickable links. A working Internet connection is still
+needed to open external websites, but all licence documents themselves
+are bundled locally.
+
 ## 1. Scope, chosen GPL version and attribution
 
 - The original BPM Player source and newly created app artwork are offered

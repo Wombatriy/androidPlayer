@@ -960,3 +960,13 @@ matching source ZIP containing the **full pinned native Rubber Band source**
 in `dist/`. Read [the release checklist](docs/OPEN_SOURCE_RELEASE.md)
 before sharing any binary: packaging a ZIP does not automatically publish
 it or complete GPL obligations.
+
+### Legal-document integrity
+
+The full GPLv2/v3 licences intentionally contain template EXAMPLES in their
+"How to Apply These Terms to Your New Programs" appendices. They must remain
+verbatim. This is not a missing field in BPM Player. Actual publisher and
+copyright statements belong to separate NOTICE/COPYRIGHT files. The app now
+also bundles Rubber Band's upstream GPLv2 COPYING, KISS FFT and Speex notices,
+and turns URLs into clickable links in its licence viewer. See
+[the release checklist](docs/OPEN_SOURCE_RELEASE.md) for details.
