@@ -474,7 +474,13 @@ class MainActivity : Activity() {
         fileActionBusy = true
         val wasCurrent = playback.currentTrack?.uri == track.uri
         val needsRestart = playback.suspendForRename(track)
-        if (wasCurrent) playerScreen.cancelWaveformForFileOperation()
+        if (wasCurrent) {
+            // Cancel an in-flight single-track BPM detection before cache purge.
+            // If the provider refuses the operation, resuming playback will
+            // select the track again and restart analysis as needed.
+            bpmCoordinator.selectTrack(null)
+            playerScreen.cancelWaveformForFileOperation()
+        }
         fileBusyDialog = AlertDialog.Builder(this)
             .setTitle("Updating music library")
             .setMessage(if (action == LibraryFileService.Action.DELETE)
