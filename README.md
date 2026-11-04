@@ -157,11 +157,15 @@ when reporting audio issues.
 
 ## Library search
 
-Tap the magnifying glass just after **Current** in Library. With an empty
-query, the search window lists tracks marked **D** (automatically detected
-as the active BPM source) first; other tracks follow in their normal Library
-order. Type part of a filename for a case-insensitive `contains` search
-without source-based ranking. Tap a result to close the search and scroll
-Library to that track (like Current), **without starting playback**. The
-underlying sorted Library and playback queue are unchanged. Results use the
-already loaded BPM snapshot, so no filesystem or decoding work is performed.
+Tap the magnifying glass just after **Current** in Library. The icon uses
+the same rounded surface and text palette as the other action buttons.
+With an empty query, filenames **without a leading three-digit BPM prefix**
+(`123 - `) appear first, followed by prefixed filenames. This is a review
+queue even when BPM was detected, manually assigned or not yet analyzed.
+The order is stable within each group, and Library itself is not reordered.
+
+Typing part of a filename filters with case-insensitive `contains`, with
+no priority grouping. Search rows show only the original filename (no D
+prefix). Tap a result to dismiss the dialog and scroll Library to that
+track, without changing playback or queue. Results use in-memory tracks,
+so no filesystem or decoder work is performed.

@@ -92,7 +92,7 @@ internal class LibraryTrackSearch(
                 minHeight = context.dp(48)
             }
             val row = getItem(position)
-            label.text = if (row.detected) "D · ${row.title}" else row.title
+            label.text = row.title
             return label
         }
     }

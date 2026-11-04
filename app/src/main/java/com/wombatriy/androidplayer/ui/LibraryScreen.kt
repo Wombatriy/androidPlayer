@@ -56,10 +56,12 @@ class LibraryScreen(
     private val current = compactButton("Current") { jumpToCurrent() }
     private val search = ImageButton(context).apply {
         setImageResource(android.R.drawable.ic_menu_search)
+        setColorFilter(PlayerPalette.text)
         contentDescription = "Search tracks in Library"
+        background = context.roundedSurface()
         minimumWidth = 0
-        setPadding(context.dp(8), context.dp(8), context.dp(8), context.dp(8))
-        scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+        setPadding(context.dp(10), context.dp(10), context.dp(10), context.dp(10))
+        scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
         setOnClickListener { openTrackSearch() }
     }
     private val scanProgress = thinBar(context, indeterminate = true)
@@ -242,12 +244,8 @@ class LibraryScreen(
         fun snapshot(): List<Track> = items
 
         /** Uses already-loaded metadata: no preferences or file reads in search. */
-        fun searchEntries(): List<LibrarySearchPolicy.Entry<Track>> = items.map { track ->
-            LibrarySearchPolicy.Entry(
-                track, track.name,
-                bpmValues[track.uri.toString()]?.source == BpmSource.DETECTED
-            )
-        }
+        fun searchEntries(): List<LibrarySearchPolicy.Entry<Track>> =
+            items.map { LibrarySearchPolicy.Entry(it, it.name) }
 
         fun submit(newItems: List<Track>) {
             bpmValues.clear()
