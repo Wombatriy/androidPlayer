@@ -295,7 +295,6 @@ class MainActivity : Activity() {
             gravity = Gravity.START or Gravity.CENTER_VERTICAL
             setPadding(dp(12), 0, dp(12), 0)
             maxLines = 1
-            isSingleLine = true
         }
         footer.addView(footerTrack, LinearLayout.LayoutParams(-1, dp(19)))
         val statusRow = LinearLayout(this).apply {
