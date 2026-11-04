@@ -68,7 +68,7 @@ class LibraryFileService(context: Context) {
                         check(parentTree != libraryTree) {
                             "Choose the parent of your music folder, not the library itself."
                         }
-                        moveWithVerifiedCopy(track, parentTree)
+                        moveWithVerifiedCopy(track, libraryTree, parentTree)
                     }
                 }
 
@@ -92,13 +92,25 @@ class LibraryFileService(context: Context) {
      * A user-selected parent (e.g. music/) contains or receives excluded/.
      * The library grant for music/jazz/ cannot create the sibling itself.
      */
-    private fun moveWithVerifiedCopy(track: Track, parentTree: Uri): String {
+    private fun moveWithVerifiedCopy(track: Track, libraryTree: Uri, parentTree: Uri): String {
         val parent = DocumentFile.fromTreeUri(app, parentTree)
             ?: error("Cannot access the selected destination parent.")
         require(parent.isDirectory && parent.canWrite()) {
             "The selected destination parent is not writable."
         }
-        val existing = parent.listFiles().firstOrNull {
+        // Confirm this folder directly contains the selected Library root.
+        // A writable grant to an unrelated folder must not silently relocate audio.
+        val libraryRootId = DocumentsContract.getTreeDocumentId(libraryTree)
+        val siblings = parent.listFiles()
+        require(siblings.any { candidate ->
+            candidate.isDirectory &&
+                runCatching { DocumentsContract.getDocumentId(candidate.uri) }
+                    .getOrNull() == libraryRootId
+        }) {
+            "Choose the direct parent of the Library folder " +
+                "(for example music/ for music/jazz/)."
+        }
+        val existing = siblings.firstOrNull {
             it.name.equals("excluded", ignoreCase = true)
         }
         val excluded = when {
