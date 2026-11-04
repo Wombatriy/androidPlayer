@@ -57,6 +57,16 @@ class PlaylistCoordinator(
         refreshActivePlaylist()
     }
 
+    /** Keep cached library refs and saved URI playlists consistent. */
+    fun onTrackRemoved(track: Track, remaining: List<Track>) {
+        store.removeUriEverywhere(track.uri.toString())
+        available = remaining.associateBy { it.uri.toString() }
+        libraryOrder = remaining
+        playback.onLibraryTrackRemoved(track)
+        // LibraryScreen emits the actual BPM sort order via onLibraryOrder.
+        refreshActivePlaylist()
+    }
+
     private fun refreshActivePlaylist() {
         playback.activePlaylistId?.let(::onPlaylistChanged)
     }

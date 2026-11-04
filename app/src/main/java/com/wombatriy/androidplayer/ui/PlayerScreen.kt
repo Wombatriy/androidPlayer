@@ -214,6 +214,15 @@ class PlayerScreen(
         refreshTrack()
     }
 
+    /**
+     * Pause pending waveform cache writes before a destructive file operation.
+     * A failed operation later restarts the current track from the normal
+     * playback callbacks. The original audio is never deleted prematurely.
+     */
+    fun cancelWaveformForFileOperation() {
+        waveformCoordinator.select(null, 0L)
+    }
+
     fun refreshTrack() {
         bpmDialog?.dismiss()
         val track = playback.currentTrack

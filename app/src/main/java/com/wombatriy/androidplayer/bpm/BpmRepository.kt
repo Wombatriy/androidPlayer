@@ -114,6 +114,13 @@ class BpmRepository(context: Context) {
         return editor.commit()
     }
 
+    /** Erase all per-file BPM estimates and overrides after deletion/exclusion. */
+    fun forget(track: Track): Boolean {
+        val base = key(track)
+        return prefs.edit().remove(base).remove(base + ".detected")
+            .remove(base + ".manual").commit()
+    }
+
     fun clearManual(track: Track) {
         val base = key(track)
         val editor = prefs.edit().remove(base + ".manual")

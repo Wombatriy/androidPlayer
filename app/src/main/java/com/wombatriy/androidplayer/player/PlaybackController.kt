@@ -279,6 +279,29 @@ class PlaybackController(context: Context) {
         } else notifyListeners { it.onQueueChanged() }
     }
 
+    /**
+     * A physical deletion or exclusion removes this URI everywhere, including
+     * the active queue. If the removed track was current, stop playback rather
+     * than accidentally continuing to read a now-inaccessible file.
+     */
+    fun onLibraryTrackRemoved(removed: Track) {
+        val wasCurrent = currentTrack?.uri == removed.uri
+        if (wasCurrent) {
+            player.stop()
+            player.clearMediaItems()
+            currentTrack = null
+            pointA = null
+            pointB = null
+        }
+        queue.removeReference(removed)
+        if (wasCurrent) {
+            notifyListeners { it.onTrackChanged() }
+            notifyListeners { it.onLoopChanged() }
+            notifyListeners { it.onPlaybackControlsChanged() }
+        }
+        notifyListeners { it.onQueueChanged() }
+    }
+
     /** Restore the original URI if the SAF provider rejected the rename. */
     fun restoreAfterFailedRename(previous: Track, restart: Boolean) {
         if (restart && currentTrack?.uri == previous.uri) playTrack(previous)

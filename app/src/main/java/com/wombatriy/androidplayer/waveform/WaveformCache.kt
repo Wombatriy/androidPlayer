@@ -42,6 +42,12 @@ class WaveformCache(context: Context) {
         }.getOrNull()
     }
 
+    /** Erase cached decoded waveform after the source was removed. */
+    fun delete(uri: Uri): Boolean {
+        val target = file(uri)
+        return !target.exists() || target.delete()
+    }
+
     fun write(uri: Uri, waveform: WaveformData) {
         check(folder.exists() || folder.mkdirs()) { "Cannot create waveform cache" }
         val atomic = AtomicFile(file(uri))

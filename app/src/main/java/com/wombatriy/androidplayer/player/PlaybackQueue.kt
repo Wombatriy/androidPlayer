@@ -27,6 +27,19 @@ class PlaybackQueue<T> {
         }
     }
 
+    /** Delete a reference, clearing selection if it was the active one. */
+    fun removeReference(value: T): Boolean {
+        val index = items.indexOf(value)
+        if (index < 0) return false
+        items = items.filterIndexed { i, _ -> i != index }
+        position = when {
+            position == index -> -1
+            position > index -> position - 1
+            else -> position
+        }
+        return true
+    }
+
     /** Replace a renamed reference without resetting playback position. */
     fun replaceReference(before: T, after: T) {
         val index = items.indexOf(before)

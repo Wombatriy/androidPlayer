@@ -29,6 +29,7 @@ class LibraryScreen(
     context: Context,
     onChooseFolder: () -> Unit,
     onRescan: () -> Unit,
+    private val onCurrentRequested: () -> String?,
     onBatchToggle: () -> Unit,
     private val onTrackSelected: (Track) -> Unit,
     private val onTrackLongPressed: (Track) -> Unit,
@@ -50,6 +51,7 @@ class LibraryScreen(
     private val choose = compactButton("Choose folder", onChooseFolder)
     private val rescan = compactButton("Rescan", onRescan)
     private val batch = compactButton("Batch BPM", onBatchToggle)
+    private val current = compactButton("Current") { jumpToCurrent() }
     private val scanProgress = thinBar(context, indeterminate = true)
     private val bpmProgress = thinBar(context, indeterminate = false)
     private val info = context.textLine("Choose a music folder to begin.", 13f)
@@ -67,7 +69,7 @@ class LibraryScreen(
 
         // Deliberately omit the redundant 'Music Library' title.
         val actions = LinearLayout(context).apply { orientation = HORIZONTAL }
-        for (button in listOf(choose, rescan, batch)) {
+        for (button in listOf(choose, rescan, batch, current)) {
             actions.addView(button, LayoutParams(0, -2, 1f))
         }
         addView(actions)
@@ -83,6 +85,7 @@ class LibraryScreen(
         list.adapter = adapter
         addView(list, LayoutParams(-1, 0, 1f))
         batch.isEnabled = false
+        current.isEnabled = false
     }
 
     private fun compactButton(caption: String, action: () -> Unit): Button =
@@ -97,6 +100,19 @@ class LibraryScreen(
         ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
             isIndeterminate = indeterminate
         }
+
+    fun updateCurrentTrack(track: Track?) {
+        current.isEnabled = track != null && adapter.indexOfUri(track.uri.toString()) >= 0
+    }
+
+    private fun jumpToCurrent() {
+        val uri = onCurrentRequested() ?: return
+        val pos = adapter.indexOfUri(uri)
+        if (pos >= 0) list.post { list.setSelectionFromTop(pos, context.dp(16)) }
+        else android.widget.Toast.makeText(
+            context, "Current song is not in this Library", android.widget.Toast.LENGTH_SHORT
+        ).show()
+    }
 
     val trackCount: Int get() = adapter.count
     fun tracksSnapshot(): List<Track> = adapter.snapshot()
@@ -118,7 +134,7 @@ class LibraryScreen(
         batch.isEnabled = !loading && adapter.count > 0
         info.text = if (loading) "Reading music folder…" else {
             if (adapter.count == 0) "No audio files found. Choose a folder to begin."
-            else "${adapter.count} tracks · tap to play · hold to rename"
+            else "${adapter.count} tracks · tap to play · hold for actions"
         }
     }
 
@@ -146,6 +162,7 @@ class LibraryScreen(
         val index = restoreIndex ?: list.firstVisiblePosition
         val offset = if (restoreIndex != null) restoreOffset else firstVisibleOffset
         adapter.submit(tracks)
+        current.isEnabled = onCurrentRequested()?.let(adapter::indexOfUri)?.let { it >= 0 } == true
         onOrderChanged(adapter.snapshot())
         val anchored = adapter.indexOfUri(previousAnchor)
         val target = if (anchored >= 0) anchored

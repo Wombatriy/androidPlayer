@@ -248,3 +248,12 @@ Past experiment: Android platform mixer produced audible crackles and was remove
 - GitHub Actions build runs only when manually dispatched.
 - Keep targetSdk=35 and minSdk=26 unless a specific feature requires otherwise.
 - CI tests don't replace manual listening on a physical phone.
+
+## Pre-release Library maintenance
+- [x] Library Current jumps to the playing track without changing playback
+- [x] Confirmed SAF delete of actual file plus playlist/queue/cache cleanup
+- [x] Exclude action uses a separate writable parent SAF grant to create sibling excluded/
+- [x] Stream-and-verify copy using SHA-256 **before** deleting the original
+- [x] Purge BPM and waveform caches for removed tracks and skip excluded/ in recursive scans
+- [x] JVM unit tests for queue deletion and excluded directory policy
+- [ ] Validate on Android phone with throwaway MP3/FLAC files and permission denial cases

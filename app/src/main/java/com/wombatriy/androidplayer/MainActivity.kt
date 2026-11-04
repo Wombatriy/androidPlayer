@@ -26,6 +26,7 @@ import android.widget.Toast
 import com.wombatriy.androidplayer.bpm.BpmCoordinator
 import com.wombatriy.androidplayer.bpm.BpmBatchAnalyzer
 import com.wombatriy.androidplayer.library.LibraryRepository
+import com.wombatriy.androidplayer.library.LibraryFileService
 import com.wombatriy.androidplayer.playlists.PlaylistCoordinator
 import com.wombatriy.androidplayer.player.PlaybackController
 import com.wombatriy.androidplayer.player.MusicPlaybackService
@@ -54,6 +55,7 @@ class MainActivity : Activity() {
         override fun onTrackChanged() {
             bpmCoordinator.selectTrack(playback.currentTrack)
             playerScreen.refreshTrack()
+            libraryScreen.updateCurrentTrack(playback.currentTrack)
             updateFooterTrack()
         }
         override fun onPlaybackControlsChanged() = playerScreen.updatePlaybackState()
@@ -100,6 +102,7 @@ class MainActivity : Activity() {
             // the app again from its notification.
             bpmCoordinator.selectTrack(playback.currentTrack)
             playerScreen.refreshTrack()
+            libraryScreen.updateCurrentTrack(playback.currentTrack)
             queueScreen.refresh()
             updateFooterTrack()
             restoreFolder()
@@ -125,6 +128,9 @@ class MainActivity : Activity() {
     private lateinit var tabButtons: List<Button>
     private val prefs by lazy { getSharedPreferences("library", MODE_PRIVATE) }
     private val libraryRepository by lazy { LibraryRepository(this) }
+    private val libraryFiles by lazy { LibraryFileService(this) }
+    private var fileActionBusy = false
+    private var pendingExclude: Track? = null
     private val renameFlow: RenameFlow by lazy {
         RenameFlow(
             activity = this,
@@ -254,6 +260,7 @@ class MainActivity : Activity() {
             this,
             onChooseFolder = ::chooseFolder,
             onRescan = ::rescanSelectedFolder,
+            onCurrentRequested = { playback.currentTrack?.uri?.toString() },
             onBatchToggle = ::toggleBatchAnalysis,
             onTrackSelected = ::playTrack,
             onTrackLongPressed = ::showLibraryTrackActions,
@@ -386,8 +393,8 @@ class MainActivity : Activity() {
     }
 
     private fun playTrack(track: Track) {
-        if (renameFlow.busy) {
-            Toast.makeText(this, "Finish renaming before selecting another track",
+        if (renameFlow.busy || fileActionBusy) {
+            Toast.makeText(this, "Finish file operation before selecting another track",
                 Toast.LENGTH_SHORT).show()
             return
         }
@@ -396,24 +403,117 @@ class MainActivity : Activity() {
     }
 
     private fun showLibraryTrackActions(track: Track) {
-        if (renameFlow.busy) {
-            Toast.makeText(this, "Finish renaming first", Toast.LENGTH_SHORT).show()
+        if (renameFlow.busy || fileActionBusy || loadingFolder || batchAnalyzer.state.running) {
+            Toast.makeText(this, "Finish file changes, scanning or BPM analysis first", Toast.LENGTH_SHORT).show()
             return
         }
         AlertDialog.Builder(this)
             .setTitle(track.name)
-            .setItems(arrayOf("Add to playlist", "Rename with BPM")) { _, action ->
+            .setItems(arrayOf(
+                "Add to playlist",
+                "Rename with BPM",
+                "Exclude from library",
+                "Delete permanently"
+            )) { _, action ->
                 when (action) {
                     0 -> playlistsScreen.addTrack(track)
                     1 -> previewRename(track)
+                    2 -> confirmFileAction(track, LibraryFileService.Action.EXCLUDE)
+                    3 -> confirmFileAction(track, LibraryFileService.Action.DELETE)
                 }
             }
             .show()
     }
 
+    private fun confirmFileAction(track: Track, action: LibraryFileService.Action) {
+        val text = if (action == LibraryFileService.Action.DELETE) {
+            "Permanently delete this audio file from your PHONE?\n\n" +
+                "${track.name}\n\nThis action cannot be undone."
+        } else {
+            "Move this file out of your library into an excluded/ folder, " +
+                "removing the original only after checking the copy.\n\n" +
+                "${track.name}\n\nThe first time you must select the PARENT " +
+                "of your music folder (for example music/ for music/jazz/). " +
+                "BPM and waveform caches will be removed."
+        }
+        AlertDialog.Builder(this)
+            .setTitle(if (action == LibraryFileService.Action.DELETE)
+                "Delete audio permanently?" else "Exclude this audio file?")
+            .setMessage(text)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton(if (action == LibraryFileService.Action.DELETE)
+                "Delete permanently" else "Move to excluded") { _, _ ->
+                if (action == LibraryFileService.Action.EXCLUDE) {
+                    val excludedParent = prefs.getString(KEY_EXCLUDED_PARENT, null)?.let(Uri::parse)
+                    val hasPermission = excludedParent != null &&
+                        contentResolver.persistedUriPermissions.any {
+                            it.uri == excludedParent && it.isWritePermission && it.isReadPermission
+                        }
+                    if (hasPermission) performFileAction(track, action, excludedParent)
+                    else {
+                        pendingExclude = track
+                        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                        }, EXCLUDED_PARENT_REQUEST)
+                    }
+                } else performFileAction(track, action, null)
+            }
+            .show()
+    }
+
+    private fun performFileAction(
+        track: Track,
+        action: LibraryFileService.Action,
+        destinationParent: Uri?
+    ) {
+        if (fileActionBusy || renameFlow.busy || loadingFolder || batchAnalyzer.state.running) return
+        val tree = prefs.getString(KEY_TREE_URI, null)?.let(Uri::parse) ?: return
+        fileActionBusy = true
+        val wasCurrent = playback.currentTrack?.uri == track.uri
+        val needsRestart = playback.suspendForRename(track)
+        if (wasCurrent) playerScreen.cancelWaveformForFileOperation()
+        Toast.makeText(this, if (action == LibraryFileService.Action.DELETE)
+            "Deleting…" else "Moving and verifying copy…", Toast.LENGTH_SHORT).show()
+
+        libraryFiles.perform(
+            action, track, tree, destinationParent, libraryScreen.tracksSnapshot()
+        ) { result ->
+            fileActionBusy = false
+            if (isFinishing || isDestroyed) return@perform
+            result.onSuccess { updated ->
+                // Prevent the deleted URI from appearing in any queue, playlist
+                // or cached library after the provider committed the change.
+                batchAnalyzer.resetForLibraryChange()
+                playlists.onTrackRemoved(track, updated.updated)
+                libraryScreen.submitTracks(updated.updated)
+                libraryScreen.updateCurrentTrack(playback.currentTrack)
+                batchAnalyzer.refreshSources(updated.updated)
+                playlistsScreen.refresh()
+                queueScreen.refresh()
+                loadedFromCache = updated.cacheSaved
+                updateStatus()
+                val verb = if (action == LibraryFileService.Action.DELETE) "Deleted" else "Excluded"
+                val warnings = buildList {
+                    if (!updated.cacheSaved) add("Rescan if the old track reappears.")
+                    if (!updated.metadataCleared) add("Some cached metadata could not be removed.")
+                }
+                Toast.makeText(this, "$verb: ${track.name}" +
+                    if (warnings.isEmpty()) "" else "\n${warnings.joinToString(" ")}",
+                    Toast.LENGTH_LONG).show()
+            }.onFailure { error ->
+                playback.restoreAfterFailedRename(track, needsRestart)
+                Toast.makeText(this,
+                    "File operation failed: ${error.message}\nOriginal kept unless the provider already completed deletion.",
+                    Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     private fun chooseFolder() {
-        if (renameFlow.busy) {
-            Toast.makeText(this, "Finish renaming before switching folders", Toast.LENGTH_SHORT).show()
+        if (renameFlow.busy || fileActionBusy) {
+            Toast.makeText(this, "Finish file operation before switching folders", Toast.LENGTH_SHORT).show()
             return
         }
         startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
@@ -426,6 +526,27 @@ class MainActivity : Activity() {
     @Deprecated("Legacy folder picker is retained for this framework-only iteration.")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == EXCLUDED_PARENT_REQUEST) {
+            val track = pendingExclude
+            pendingExclude = null
+            if (resultCode != RESULT_OK || track == null) return
+            val selectedParent = data?.data ?: return
+            val activeLibrary = prefs.getString(KEY_TREE_URI, null)?.let(Uri::parse)
+            if (selectedParent == activeLibrary) {
+                Toast.makeText(this, "Choose the parent folder outside the selected music library, e.g. music/ instead of jazz/.", Toast.LENGTH_LONG).show()
+                return
+            }
+            val granted = data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            try {
+                contentResolver.takePersistableUriPermission(selectedParent, granted)
+                prefs.edit().putString(KEY_EXCLUDED_PARENT, selectedParent.toString()).apply()
+                performFileAction(track, LibraryFileService.Action.EXCLUDE, selectedParent)
+            } catch (error: Exception) {
+                Toast.makeText(this, "Destination access denied: ${error.message}", Toast.LENGTH_LONG).show()
+            }
+            return
+        }
         if (requestCode != FOLDER_REQUEST || resultCode != RESULT_OK) return
         val uri = data?.data ?: return
         val flags = data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or
@@ -434,6 +555,8 @@ class MainActivity : Activity() {
             contentResolver.takePersistableUriPermission(uri, flags)
             val previous = prefs.getString(KEY_TREE_URI, null)
             if (previous != uri.toString()) {
+                // The excluded/ destination is configured per source library.
+                prefs.edit().remove(KEY_EXCLUDED_PARENT).apply()
                 // Do not apply the old folder's scroll position to a new library.
                 libraryScreen.restorePosition(0, 0)
                 prefs.edit().putInt(KEY_SCROLL_INDEX, 0).putInt(KEY_SCROLL_OFFSET, 0).apply()
@@ -452,8 +575,8 @@ class MainActivity : Activity() {
     }
 
     private fun rescanSelectedFolder() {
-        if (renameFlow.busy) {
-            Toast.makeText(this, "Finish renaming before rescanning", Toast.LENGTH_SHORT).show()
+        if (renameFlow.busy || fileActionBusy) {
+            Toast.makeText(this, "Finish file operation before rescanning", Toast.LENGTH_SHORT).show()
             return
         }
         prefs.getString(KEY_TREE_URI, null)?.let {
@@ -462,7 +585,7 @@ class MainActivity : Activity() {
     }
 
     private fun toggleBatchAnalysis() {
-        if (renameFlow.busy) return
+        if (renameFlow.busy || fileActionBusy) return
         if (batchAnalyzer.state.running) {
             batchAnalyzer.cancel()
         } else {
@@ -471,7 +594,7 @@ class MainActivity : Activity() {
     }
 
     private fun previewRename(track: Track) {
-        if (renameFlow.busy || loadingFolder || batchAnalyzer.state.running) {
+        if (renameFlow.busy || fileActionBusy || loadingFolder || batchAnalyzer.state.running) {
             Toast.makeText(this, "Finish scanning or BPM analysis first",
                 Toast.LENGTH_SHORT).show()
             return
@@ -599,6 +722,7 @@ class MainActivity : Activity() {
             playback.removeListener(playbackListener)
             playerScreen.close()
             renameFlow.close()
+            libraryFiles.close()
             batchAnalyzer.close()
             bpmCoordinator.close()
             libraryRepository.close()
@@ -614,6 +738,8 @@ class MainActivity : Activity() {
     companion object {
         const val ACTION_SHOW_PLAYER = "com.wombatriy.androidplayer.SHOW_PLAYER"
         private const val FOLDER_REQUEST = 41
+        private const val EXCLUDED_PARENT_REQUEST = 42
+        private const val KEY_EXCLUDED_PARENT = "excludedParentTree"
         private const val KEY_TREE_URI = "treeUri"
         private const val KEY_SCROLL_INDEX = "scrollIndex"
         private const val KEY_SCROLL_OFFSET = "scrollOffset"

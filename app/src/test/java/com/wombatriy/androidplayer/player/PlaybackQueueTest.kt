@@ -85,4 +85,30 @@ class PlaybackQueueTest {
         original.clear()
         assertEquals("two", q.next())
     }
+    @Test fun deletingNonCurrentTrackKeepsSelectionAndOrder() {
+        val q = makeQueue()
+        assertTrue(q.removeReference("one"))
+        assertEquals(listOf("two", "three"), q.snapshot())
+        assertEquals(0, q.position)
+        assertEquals("two", q.current)
+        assertEquals("three", q.next())
+    }
+
+    @Test fun deletingSelectedTrackClearsSelectionButPreservesOtherEntries() {
+        val q = makeQueue()
+        assertTrue(q.removeReference("two"))
+        assertEquals(-1, q.position)
+        assertNull(q.current)
+        assertEquals(listOf("one", "three"), q.snapshot())
+        assertNull(q.next())
+        assertEquals("three", q.selectAt(1))
+    }
+
+    @Test fun deletingMissingReferenceIsNoOp() {
+        val q = makeQueue()
+        assertFalse(q.removeReference("nonexistent"))
+        assertEquals("two", q.current)
+        assertEquals(3, q.size)
+    }
+
 }

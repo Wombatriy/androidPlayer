@@ -52,7 +52,11 @@ object MusicFolder {
                     throw CancellationException("Folder scan cancelled")
                 }
                 if (file.isDirectory) {
-                    pending.addLast(file)
+                    // Excluded tracks must stay hidden even when the user
+                    // later selects the parent music folder as Library root.
+                    if (com.wombatriy.androidplayer.library.ExcludedFolderPolicy.shouldTraverse(file.name)) {
+                        pending.addLast(file)
+                    }
                 } else if (file.isFile) {
                     val name = file.name ?: continue
                     if (name.substringAfterLast('.', "").lowercase() in extensions) {

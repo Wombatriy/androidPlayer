@@ -52,6 +52,19 @@ class PlaylistStore(context: Context) {
         return true
     }
 
+    /** Remove stale entries from every playlist after a file is gone. */
+    fun removeUriEverywhere(uri: String): Set<String> {
+        val affected = entries.filter { uri in it.trackUris }.map { it.id }.toSet()
+        if (affected.isNotEmpty()) {
+            set(entries.map { playlist ->
+                if (playlist.id in affected) {
+                    playlist.copy(trackUris = playlist.trackUris.filterNot { it == uri })
+                } else playlist
+            })
+        }
+        return affected
+    }
+
     fun replaceUri(before: String, after: String) =
         set(PlaylistCatalog.replaceUri(entries, before, after))
 
