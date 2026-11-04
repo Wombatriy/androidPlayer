@@ -830,7 +830,7 @@ pipeline is not modified in this service iteration.
 
 ## Iteration 10A — DSP foundation and licensing evaluation
 
-The standard Media3/Sonic audio player is still the only enabled audio engine.
+The first 10A commit used Sonic alone; the later R3 integration and on-device test resulted in R3 becoming the default engine.
 The construction of ExoPlayer, audio focus handling and wakelock configuration
 now lives in the isolated AudioEngineFactory. This prepares a controlled future
 RenderersFactory-based native time-stretch integration without touching the
@@ -850,8 +850,9 @@ Run: ./gradlew :app:assembleDebug :app:testDebugUnitTest
 
 ## Stage 10A-native — real-time Rubber Band R3 on Android (opt-in)
 
-A **second, experimental native build** now processes music with Rubber Band
-R3 inside ExoPlayer's AudioSink. Sonic remains the untouched default.
+The experimental native build integrated Rubber Band R3 inside
+ExoPlayer's AudioSink. After a successful listening comparison, **R3 is now the default**;
+Sonic remains available using `-Prubberband=false`.
 
 On Windows, install Android NDK/CMake, then:
 

@@ -3,7 +3,8 @@
 ## Design
 
 The working player has a MediaSessionService, queue, precise A–B loops,
-waveform and background playback. Its audio engine is still **Media3/Sonic**.
+waveform and background playback. The initial 10A foundation used **Media3/Sonic**;
+following phone testing, **Rubber Band R3 is the default** and Sonic is an explicit fallback.
 Moving its builder to `player/audio/AudioEngineFactory.kt` creates one
 injection point for a future custom Media3 RenderersFactory. It deliberately
 does NOT load or package Rubber Band and should not change sound.
@@ -40,7 +41,7 @@ listening volume. Check cymbal decay, percussion attacks, walking bass, brass
 vibrato, vocals and swing feel. These rendered WAVs reveal processing
 artifacts, but cannot prove realtime CPU suitability on a particular phone.
 
-## Implemented: opt-in native Rubber Band R3
+## Implemented: native Rubber Band R3 (now default)
 
 1. Select GPL or commercial licensing first. Do not automatically bundle
    third-party GPL sources in a distributable APK.
