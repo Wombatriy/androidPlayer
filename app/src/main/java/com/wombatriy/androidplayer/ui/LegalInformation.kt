@@ -3,6 +3,8 @@ package com.wombatriy.androidplayer.ui
 import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Typeface
+import android.text.method.LinkMovementMethod
+import android.text.util.Linkify
 import android.widget.ScrollView
 import android.widget.TextView
 import com.wombatriy.androidplayer.BuildConfig

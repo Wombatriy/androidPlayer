@@ -4,7 +4,9 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="5300cfcf-0300-4264-a865-3fb490746536" name="Changes" comment="start" />
+    <list default="true" id="5300cfcf-0300-4264-a865-3fb490746536" name="Changes" comment="start">
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/wombatriy/androidplayer/ui/LegalInformation.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/wombatriy/androidplayer/ui/LegalInformation.kt" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -83,7 +85,7 @@
     "RunOnceActivity.readMode.enableVisualFormatting": "true",
     "cf.first.check.clang-format": "false",
     "cidr.known.project.marker": "true",
-    "git-widget-placeholder": "feature/01-player-foundation",
+    "git-widget-placeholder": "main",
     "last_opened_file_path": "C:/Users/Dima/AndroidStudioProjects/MyAndroidPlayer"
   }
 }]]></component>
