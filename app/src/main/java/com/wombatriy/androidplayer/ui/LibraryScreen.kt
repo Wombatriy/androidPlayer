@@ -58,7 +58,6 @@ class LibraryScreen(
         setImageResource(android.R.drawable.ic_menu_search)
         contentDescription = "Search tracks in Library"
         minimumWidth = 0
-        minWidth = 0
         setPadding(context.dp(8), context.dp(8), context.dp(8), context.dp(8))
         scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
         setOnClickListener { openTrackSearch() }
