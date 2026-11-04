@@ -155,9 +155,31 @@ class LibraryFileService(context: Context) {
                     targetBytes += n
                 }
             } ?: error("Cannot verify the new file.")
+            val originalHash = sourceDigest.digest()
             require(sourceBytes == targetBytes &&
-                sourceDigest.digest().contentEquals(verifyDigest.digest())) {
+                originalHash.contentEquals(verifyDigest.digest())) {
                 "The copied file does not match the original. Original left untouched."
+            }
+            // Detect a file changing during the copy (e.g. an in-progress
+            // download). Never remove a newly modified original.
+            val freshDigest = MessageDigest.getInstance("SHA-256")
+            var freshBytes = 0L
+            resolver.openInputStream(track.uri)?.use { input ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    check(!Thread.currentThread().isInterrupted) {
+                        "Source recheck cancelled before deletion."
+                    }
+                    val n = input.read(buffer)
+                    if (n < 0) break
+                    if (n == 0) continue
+                    freshDigest.update(buffer, 0, n)
+                    freshBytes += n
+                }
+            } ?: error("Original source cannot be rechecked.")
+            require(freshBytes == sourceBytes &&
+                originalHash.contentEquals(freshDigest.digest())) {
+                "The original file changed during copy. It was NOT deleted."
             }
             copiedAndVerified = true
             require(DocumentsContract.deleteDocument(resolver, track.uri)) {
