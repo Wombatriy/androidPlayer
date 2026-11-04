@@ -293,7 +293,7 @@ class PlaybackController(context: Context) {
             pointA = null
             pointB = null
         }
-        queue.removeReference(removed) { a, b -> a.uri == b.uri }
+        queue.removeReference(removed)
         if (wasCurrent) {
             notifyListeners { it.onTrackChanged() }
             notifyListeners { it.onLoopChanged() }

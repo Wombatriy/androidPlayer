@@ -427,9 +427,8 @@ class MainActivity : Activity() {
 
     private fun confirmFileAction(track: Track, action: LibraryFileService.Action) {
         val text = if (action == LibraryFileService.Action.DELETE) {
-            "Delete this audio file from your device?\n\n" +
-                "${track.name}\n\nSome storage providers may move it to Trash. " +
-                "BPM and waveform cache will be cleared."
+            "Permanently delete this audio file from your PHONE?\n\n" +
+                "${track.name}\n\nThis action cannot be undone."
         } else {
             "Move this file out of your library into an excluded/ folder, " +
                 "removing the original only after checking the copy.\n\n" +

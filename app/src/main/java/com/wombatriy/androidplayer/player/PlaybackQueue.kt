@@ -59,8 +59,15 @@ class PlaybackQueue<T> {
      * A future playlist queue will only call this for its own source.
      */
     fun updateOrder(source: List<T>, sameItem: (T, T) -> Boolean) {
-        val selected = current ?: return
+        val selected = current
         val snapshot = source.toList()
+        if (selected == null) {
+            // The active file may have been physically deleted. Refresh the
+            // queue but do not resume playback or auto-select another song.
+            items = snapshot
+            position = -1
+            return
+        }
         val index = snapshot.indexOfFirst { sameItem(it, selected) }
         if (index < 0) return
         items = snapshot

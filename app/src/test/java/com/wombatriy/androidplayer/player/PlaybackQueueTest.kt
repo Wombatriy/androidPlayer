@@ -120,4 +120,15 @@ class PlaybackQueueTest {
         assertEquals(3, q.size)
     }
 
+    @Test fun queueCanBeRefreshedAfterCurrentTrackWasDeleted() {
+        val q = makeQueue()
+        q.removeReference("two")
+        q.updateOrder(listOf("three", "one")) { a, b -> a == b }
+        assertEquals(listOf("three", "one"), q.snapshot())
+        assertNull(q.current)
+        assertEquals(-1, q.position)
+        assertNull(q.next())
+        assertEquals("three", q.selectAt(0))
+    }
+
 }
