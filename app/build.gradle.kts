@@ -45,11 +45,10 @@ if (gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = tr
 android {
     namespace = "com.wombatriy.androidplayer"
     compileSdk = 36
-
     defaultConfig {
         applicationId = "com.wombatriy.androidplayer"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 2
         versionName = "1.0.0-rc1"
 
@@ -82,6 +81,9 @@ android {
     }
 
     if (useRubberBand) {
+        // Only native R3 builds require NDK r28c. Manual Sonic CI stays
+        // independent of a local NDK installation.
+        ndkVersion = "28.2.13676358"
         externalNativeBuild {
             cmake {
                 path = file("src/main/cpp/CMakeLists.txt")

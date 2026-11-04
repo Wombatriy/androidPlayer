@@ -102,7 +102,10 @@ about every transitive dependency.
   basic build instructions.
 
 The archive intentionally excludes local signing keys, passwords,
-untracked files, personal data, and users' music.
+untracked files, local.properties, .idea workspace settings, and users'
+music. Tracked historical machine-specific configuration is stripped
+from the ZIP before publishing; these files are also removed from
+current version control by the Play readiness PR.
 
 A GitHub "Download source ZIP" button on this project alone is NOT
 sufficient for the R3 build, because the native upstream source is
@@ -157,3 +160,25 @@ gitignored in the normal repository.
 
 This PR prepares compliance. It is not a certification of legal
 compliance and does not automatically publish the source archive.
+
+## Source publication before signing or Google Play registration
+
+You can publish the full matching source ZIP **now**, after the final
+readiness PR is merged. You do not need a Play account or keystore.
+
+- Fetch and verify official Rubber Band 4.0.0 using
+  `tools/dsp/prepare-rubberband.ps1`.
+- Run `tools/release/package-corresponding-source.ps1` on clean main.
+  It automatically executes `verify-corresponding-source.ps1`; the
+  verifier checks SHA metadata, upstream source, licence paths, and
+  absence of tracked developer-specific config.
+- To publish through GitHub CLI, use
+  `tools/release/publish-corresponding-source.ps1 -Tag v1.0.0-rc1`.
+  It requires an explicit confirmation, public repository and a clean
+  main synced with origin/main.
+- Verify unauthenticated downloads from the GitHub Releases page.
+
+This publication is **not yet completed** by the PR itself. It must be
+executed on the final merged commit; this environment cannot compile an
+Android bundle or upload binary GitHub release assets. See
+[PLAY_RELEASE_READINESS.md](PLAY_RELEASE_READINESS.md).

@@ -21,11 +21,15 @@ $ErrorActionPreference = "Stop"
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..\..")).Path
 $gradlew = Join-Path $root "gradlew.bat"
 $sourceScript = Join-Path $PSScriptRoot "package-corresponding-source.ps1"
+$packageVerifier = Join-Path $PSScriptRoot "verify-android-release.ps1"
 $vendor = Join-Path $root "app\src\main\cpp\vendor\rubberband\single\RubberBandSingle.cpp"
 
 if (-not (Test-Path -LiteralPath $gradlew)) { throw "Gradle wrapper not found." }
 if (-not (Test-Path -LiteralPath $sourceScript)) {
     throw "Source packaging script is missing."
+}
+if (-not (Test-Path -LiteralPath $packageVerifier)) {
+    throw "Native alignment verifier is missing."
 }
 if (-not (Test-Path -LiteralPath $KeyStorePath)) {
     throw "Signing keystore missing. First run tools\release\create-keystore.ps1"
@@ -71,6 +75,11 @@ try {
             throw "Build succeeded but output file not found: $built"
         }
 
+        # Abort distribution if native PT_LOAD page alignment is wrong.
+        # For AABs bundletool can additionally check PAGE_ALIGNMENT_16K when
+        # BUNDLETOOL_JAR points to the official bundletool-all JAR.
+        & $packageVerifier -PackagePath $built
+
         $destination = Join-Path $root "dist"
         New-Item -ItemType Directory -Path $destination -Force | Out-Null
         $target = Join-Path $destination $name
@@ -81,6 +90,8 @@ try {
 
         Write-Host "Signed release: $target"
         Write-Host "Source revision embedded: $sourceRevision"
+        Write-Host "For Play Console: confirm 16 KiB page support in App Bundle Explorer."
+        Write-Host "For source publication after merging to main, see tools/release/publish-corresponding-source.ps1."
         Write-Host "Do NOT distribute before publishing the matching corresponding-source ZIP"
         Write-Host "and checking the third-party licence/Play Store compliance checklist."
         Write-Host "Play Protect may still prompt for a scan during sideloading."

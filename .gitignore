@@ -32,3 +32,9 @@ app/src/main/cpp/vendor/rubberband/
 *.keystore
 *.p12
 /dist/
+
+
+# Generated Android Studio config must never be committed or published.
+# Old versions are in Git history; current release sources exclude them.
+local.properties
+.idea/

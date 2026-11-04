@@ -19,5 +19,11 @@ add_library(rubberband_player SHARED
 target_include_directories(rubberband_player PRIVATE "${RB_ROOT}")
 target_compile_features(rubberband_player PRIVATE cxx_std_17)
 target_compile_options(rubberband_player PRIVATE -O2 -fexceptions)
+# Defensively request 16 KiB page-aligned PT_LOAD segments even if a
+# developer configures an older NDK. Verification of the built .so is
+# mandatory before publishing, see tools/release/verify-android-release.ps1.
+target_link_options(rubberband_player PRIVATE
+    "-Wl,-z,max-page-size=16384"
+    "-Wl,-z,common-page-size=16384")
 find_library(log_lib log)
 target_link_libraries(rubberband_player PRIVATE "${log_lib}")

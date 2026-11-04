@@ -10,8 +10,10 @@ to their own music. Adjust playback speed while keeping the original pitch,
 inspect tempo information, practise sections with A–B loops, and organise a
 local music collection without uploading files to a server.
 
-> **Release status:** pre-release / on-device testing. The app is being prepared
-> for Google Play internal testing; it is not yet published on Google Play.
+> **Release status:** pre-release / on-device testing. Google Play
+> internal testing preparation uses API 36, NDK r28c, 16 KiB native checks
+> and a separately published GPL corresponding-source release.
+> See [Play release readiness](docs/PLAY_RELEASE_READINESS.md).
 
 ## Features
 
@@ -65,8 +67,9 @@ copies first.** See [Library file-management guide](docs/LIBRARY_FILE_OPERATIONS
 
 ### Requirements
 
-- **Android Studio**, **JDK 17** and **Android SDK 36** (target API 35).
-- **Android NDK (Side by side)** and **CMake** for Rubber Band R3.
+- **Android Studio**, **JDK 17** and **Android SDK 36** (target API 36).
+- **Android NDK r28c (28.2.13676358)** (Side by side) and **CMake**
+  for Rubber Band R3 and 16 KiB page-compatible native builds.
 - A connected **Android 8.0+ (API 26+)** device or emulator. The initial
   native R3 build targets **arm64-v8a** only.
 - Git and an internet connection for the initial download of the pinned
@@ -110,9 +113,11 @@ a **matching corresponding-source ZIP** containing the pinned native
 Rubber Band sources. The ZIP still needs to be made available to recipients
 under the applicable GPL conditions **before** distributing R3 binaries.
 
-Read [signed-release instructions](docs/10B-signed-release.md) and the
-[open-source release checklist](docs/OPEN_SOURCE_RELEASE.md) before uploading
-an AAB or sharing an APK.
+Read the [Play release checklist](docs/PLAY_RELEASE_READINESS.md),
+[signed-release instructions](docs/10B-signed-release.md) and the
+[open-source source/licence checklist](docs/OPEN_SOURCE_RELEASE.md).
+The source-only GitHub Release may be published **before** the Play
+developer account is approved, but it must match the eventual AAB revision.
 
 ## Project structure
 

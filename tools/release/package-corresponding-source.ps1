@@ -61,6 +61,18 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Could not archive app sources." }
     Expand-Archive -LiteralPath $appZip -DestinationPath $stage -Force
 
+    # Historical commits accidentally tracked Android Studio's local SDK
+    # path and its private workspace state. They are not build source and
+    # must never be published in a corresponding-source archive.
+    $localProperties = Join-Path $stage "local.properties"
+    if (Test-Path -LiteralPath $localProperties) {
+        Remove-Item -LiteralPath $localProperties -Force
+    }
+    $ideaDirectory = Join-Path $stage ".idea"
+    if (Test-Path -LiteralPath $ideaDirectory) {
+        Remove-Item -LiteralPath $ideaDirectory -Recurse -Force
+    }
+
     # Archive *all* native source and upstream COPYING notices, not only
     # RubberBandSingle.cpp. A plain repo ZIP without this directory is incomplete.
     $vendorZip = Join-Path $temp "rubberband.zip"
@@ -76,7 +88,8 @@ Application source Git revision: $appRevision
 Rubber Band 4.0.0 revision: $vendorRevision
 Licence for BPM Player: GPL-3.0-or-later (see LICENSE)
 Upstream Rubber Band licence: GPL-2.0-or-later (see vendor/rubberband/COPYING)
-Build requirements: JDK 17, Android SDK/NDK, CMake and Gradle wrapper.
+Build requirements: JDK 17, Android SDK API 36, Android NDK r28c (28.2.13676358),
+CMake and included Gradle wrapper. The source includes all custom build scripts.
 To test this source on an arm64 Android device:
     .\gradlew.bat :app:assembleDebug -Prubberband=true
 To build a signed release with the same source revision:
@@ -95,6 +108,13 @@ is included in this archive.
     [System.IO.Compression.ZipFile]::CreateFromDirectory(
         $stage, $output, [System.IO.Compression.CompressionLevel]::Optimal, $false
     )
+
+    # Never advertise an unchecked source package as complete.
+    $verifier = Join-Path $PSScriptRoot "verify-corresponding-source.ps1"
+    if (-not (Test-Path -LiteralPath $verifier)) {
+        throw "Source archive verifier is missing: $verifier"
+    }
+    & $verifier -ArchivePath $output -ExpectedRevision $appRevision
 
     $digest = (Get-FileHash -LiteralPath $output -Algorithm SHA256).Hash
     Write-Host "Corresponding source archive: $output"

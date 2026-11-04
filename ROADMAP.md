@@ -261,3 +261,15 @@ Past experiment: Android platform mixer produced audible crackles and was remove
 - [x] Purge BPM and waveform caches for removed tracks; skip named excluded/ and configured destinations by SAF identity
 - [x] JVM unit tests for queue deletion and excluded directory policy
 - [ ] Verify destination selection, repeated exclusions and rescan on disposable files on Android
+
+## Google Play readiness (release/google-play-readiness)
+- [x] Target Android 16 / API 36 for new Play submissions
+- [x] Pin Android NDK r28c and enforce 16 KiB ELF linker alignment
+- [x] Add release-time native ELF/ZIP verification scripts
+- [x] Add explicit source ZIP verification and GitHub CLI publication helper
+- [x] Exclude local.properties and Android Studio .idea files from current sources and release ZIP
+- [ ] Android build: run tests, verify actual 16 KiB native payload and AAB packaging
+- [ ] Publish exact-version corresponding-source GitHub Release after merge
+- [ ] Audit full transitive dependency graph and asset copyrights
+- [ ] Verify Android 16 edge-to-edge, Back navigation and phone/tablet controls
+- [ ] Sign and upload AAB to Google Play Internal testing

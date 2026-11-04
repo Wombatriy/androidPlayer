@@ -13,6 +13,10 @@ for more details.
 Project source repository:
 https://github.com/Wombatriy/androidPlayer
 
+Corresponding-source release ZIPs for distributed versions:
+https://github.com/Wombatriy/androidPlayer/releases
+Select the archive whose source revision matches About & licences.
+
 For the complete corresponding source of the EXACT binary you received:
   1. Locate the release version and source revision displayed in About.
   2. Open the release page in the GitHub repository for that version.

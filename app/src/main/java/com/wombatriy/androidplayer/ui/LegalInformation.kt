@@ -34,6 +34,8 @@ internal object LegalInformation {
 
             Source revision: $sourceRevision
             https://github.com/Wombatriy/androidPlayer
+            Full corresponding-source ZIPs:
+            https://github.com/Wombatriy/androidPlayer/releases
         """.trimIndent()
         val dialog = AlertDialog.Builder(context)
             .setTitle("About & licences")
@@ -50,13 +52,19 @@ internal object LegalInformation {
 
     private fun showChoices(context: Context) {
         val titles = arrayOf(
-            "GNU GPL v3 — BPM Player / Rubber Band",
+            "GNU GPL v3 — BPM Player (and Rubber Band GPLv3 option)",
+            "Rubber Band 4.0.0 — upstream GNU GPL v2",
+            "KISS FFT — original BSD-3-Clause notice",
+            "Speex — upstream BSD-style notice",
             "Apache 2.0 — AndroidX / Kotlin",
             "Third-party copyright notices",
             "Corresponding source / warranty"
         )
         val files = arrayOf(
             "licenses/GPL-3.0-or-later.txt",
+            "licenses/RUBBER_BAND_COPYING_GPL2.txt",
+            "licenses/KISSFFT_COPYING.txt",
+            "licenses/SPEEX_COPYING.txt",
             "licenses/Apache-2.0.txt",
             "licenses/THIRD_PARTY_NOTICES.txt",
             "licenses/SOURCE_AND_WARRANTY.txt"
@@ -82,6 +90,9 @@ internal object LegalInformation {
             textSize = 13f
             typeface = Typeface.MONOSPACE
             setTextIsSelectable(true)
+            Linkify.addLinks(this, Linkify.WEB_URLS)
+            movementMethod = LinkMovementMethod.getInstance()
+            linksClickable = true
             val margin = (context.resources.displayMetrics.density * 16).toInt()
             setPadding(margin, margin, margin, margin)
         }
