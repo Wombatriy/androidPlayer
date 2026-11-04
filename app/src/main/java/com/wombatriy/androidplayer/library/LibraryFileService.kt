@@ -8,6 +8,7 @@ import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
 import com.wombatriy.androidplayer.Track
 import com.wombatriy.androidplayer.bpm.BpmRepository
+import com.wombatriy.androidplayer.playlists.PlaylistStore
 import com.wombatriy.androidplayer.waveform.WaveformCache
 import java.security.MessageDigest
 import java.util.concurrent.Executors
@@ -34,6 +35,7 @@ class LibraryFileService(context: Context) {
     private val resolver = app.contentResolver
     private val cache = LibraryCache(app)
     private val bpm = BpmRepository(app)
+    private val playlistStore = PlaylistStore(app)
     private val waveform = WaveformCache(app)
     private val executor = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
@@ -75,6 +77,9 @@ class LibraryFileService(context: Context) {
                 // The provider has committed the operation: never turn a failed
                 // cache write into a false 'file not removed' error.
                 val remaining = tracks.filterNot { it.uri == track.uri }
+                // Must persist even if Android destroys the Activity before
+                // the completion callback gets a chance to update its UI.
+                playlistStore.removeUriEverywhere(track.uri.toString())
                 val bpmOk = runCatching { bpm.forget(track) }.getOrDefault(false)
                 val waveformOk = runCatching { waveform.delete(track.uri) }.getOrDefault(false)
                 val metadataOk = bpmOk && waveformOk

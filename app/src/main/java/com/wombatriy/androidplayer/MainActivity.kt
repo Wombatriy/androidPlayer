@@ -518,6 +518,7 @@ class MainActivity : Activity() {
                     Toast.LENGTH_LONG).show()
             }.onFailure { error ->
                 playback.restoreAfterFailedRename(track, needsRestart)
+                if (wasCurrent) bpmCoordinator.selectTrack(playback.currentTrack)
                 Toast.makeText(this,
                     "File operation failed: ${error.message}\nOriginal kept unless the provider already completed deletion.",
                     Toast.LENGTH_LONG).show()
