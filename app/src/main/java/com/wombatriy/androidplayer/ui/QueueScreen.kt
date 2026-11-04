@@ -46,7 +46,7 @@ class QueueScreen(
     init {
         orientation = VERTICAL
         setPadding(context.dp(12), context.dp(8), context.dp(12), context.dp(8))
-        setBackgroundColor(Color.rgb(249, 250, 252))
+        setBackgroundColor(PlayerPalette.background)
         val header = LinearLayout(context).apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL

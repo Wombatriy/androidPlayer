@@ -166,3 +166,14 @@ This branch intentionally does **not** relicense your pre-existing app
 source or bundle third-party source code into the Git repository. You must
 approve that release/licence decision before distributing R3-enabled APKs.
 The ordinary Sonic APK has no new Rubber Band licence obligations.
+
+## 10B: R3 default + signed release
+
+R3 passed the first on-phone listening test at 0.70× (smoother than
+Sonic on the same track). Consequently `-Prubberband=true` is the default
+setting, and `-Prubberband=false` explicitly selects Sonic. Sources
+still must be installed locally with `prepare-rubberband.ps1`.
+
+For signed release steps, permanent-key security, Play Protect limitations
+and GPL licensing before distributing APKs, see
+[10B-signed-release.md](10B-signed-release.md).

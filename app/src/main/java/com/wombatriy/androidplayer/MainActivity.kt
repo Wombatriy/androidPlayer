@@ -30,6 +30,8 @@ import com.wombatriy.androidplayer.player.MusicPlaybackService
 import com.wombatriy.androidplayer.ui.BackNavigationPolicy
 import com.wombatriy.androidplayer.player.LocalBindAuth
 import com.wombatriy.androidplayer.ui.LibraryScreen
+import com.wombatriy.androidplayer.ui.PlayerPalette
+import com.wombatriy.androidplayer.ui.setTabLook
 import com.wombatriy.androidplayer.ui.PlayerScreen
 import com.wombatriy.androidplayer.ui.PlaylistsScreen
 import com.wombatriy.androidplayer.ui.QueueScreen
@@ -112,6 +114,7 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private val playlists: PlaylistCoordinator by lazy { PlaylistCoordinator(this, playback) }
     private lateinit var pages: List<View>
+    private lateinit var tabButtons: List<Button>
     private val prefs by lazy { getSharedPreferences("library", MODE_PRIVATE) }
     private val libraryRepository by lazy { LibraryRepository(this) }
     private val renameFlow: RenameFlow by lazy {
@@ -210,31 +213,33 @@ class MainActivity : Activity() {
     private fun createLayout() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.rgb(249, 250, 252))
+            setBackgroundColor(PlayerPalette.background)
         }
-        val nav = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        listOf("Player", "Library", "Playlists", "Queue").forEachIndexed { index, title ->
-            nav.addView(Button(this).apply {
+        val nav = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(PlayerPalette.nav)
+            setPadding(dp(5), dp(5), dp(5), dp(5))
+        }
+        tabButtons = listOf("Player", "Library", "Playlists", "Queue").mapIndexed { index, title ->
+            Button(this).apply {
                 text = title
-                textSize = 11f
+                textSize = 12f
                 isAllCaps = false
+                minWidth = 0
+                minimumWidth = 0
+                setPadding(0, 0, 0, 0)
                 setOnClickListener { showTab(index) }
-            }, LinearLayout.LayoutParams(0, dp(52), 1f))
-            if (index < 3) {
-                // Vertical divider between each pair of adjacent tabs.
-                nav.addView(View(this).apply {
-                    setBackgroundColor(Color.rgb(18, 21, 25))
-                }, LinearLayout.LayoutParams(dp(2), dp(52)))
+            }.also { button ->
+                nav.addView(button, LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+                    marginStart = dp(2)
+                    marginEnd = dp(2)
+                })
             }
         }
         root.addView(nav)
-        // Two narrow horizontal rules separated by a light gap, as in the mock-up.
-        root.addView(View(this).apply { setBackgroundColor(Color.rgb(18, 21, 25)) },
-            LinearLayout.LayoutParams(-1, dp(2)))
-        root.addView(View(this).apply { setBackgroundColor(Color.rgb(249, 250, 252)) },
-            LinearLayout.LayoutParams(-1, dp(3)))
-        root.addView(View(this).apply { setBackgroundColor(Color.rgb(18, 21, 25)) },
-            LinearLayout.LayoutParams(-1, dp(2)))
+        root.addView(View(this).apply {
+            setBackgroundColor(PlayerPalette.border)
+        }, LinearLayout.LayoutParams(-1, dp(1)))
 
         playerScreen = PlayerScreen(this, playback, bpmCoordinator)
         libraryScreen = LibraryScreen(
@@ -322,6 +327,9 @@ class MainActivity : Activity() {
     private fun showTab(index: Int) {
         if (activeTab == 1 && index != 1) saveScrollPosition()
         activeTab = index.coerceIn(0, pages.lastIndex)
+        if (::tabButtons.isInitialized) {
+            tabButtons.forEachIndexed { tab, button -> button.setTabLook(tab == activeTab) }
+        }
         // Keep tab instances and their state in memory; never reconstruct lists.
         pages.forEachIndexed { i, page ->
             page.visibility = if (i == activeTab) View.VISIBLE else View.GONE

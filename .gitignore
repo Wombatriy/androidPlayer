@@ -26,3 +26,9 @@ gradle-app.setting
 # GPL Rubber Band sources checked out explicitly for local native experiments.
 # See tools/dsp/prepare-rubberband.ps1
 app/src/main/cpp/vendor/rubberband/
+
+# Private distribution artifacts and signing keys
+*.jks
+*.keystore
+*.p12
+/dist/

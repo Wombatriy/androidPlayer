@@ -872,3 +872,29 @@ limitations, GPL guidance and tests.
 We have not compiled this Android NDK configuration in the assistant
 environment (SDK/NDK unavailable) and the new native path requires a
 first phone build before the PR can be merged.
+
+## Stage 10B — R3 default, visual polish and locally signed APK
+
+After a device comparison against Sonic at 0.70×, Rubber Band R3 is now
+the **default** engine. Use `-Prubberband=false` to build the previous
+Sonic path. Regular R3 builds require Android NDK, CMake, and official
+pinned Rubber Band source from `tools/dsp/prepare-rubberband.ps1`.
+
+UI changes: primary buttons are rounded; the background is a darker
+slate gray with readable light list surfaces, and the selected navigation
+tab is highlighted in teal.
+
+To create a release APK signed with **your own long-lived key**, follow
+[docs/10B-signed-release.md](docs/10B-signed-release.md). The helper
+scripts are `tools/release/create-keystore.ps1` (once) and
+`tools/release/build-release.ps1` (each release). Keys and passwords
+are never committed.
+
+Play Protect may still request a scan when the APK is sideloaded.
+Installing through Google Play internal testing is preferable for friends.
+An R3-enabled APK must not be sent to friends until the chosen GPL
+source-distribution obligations or a commercial licence are satisfied.
+
+Caution: the previously installed debug build has a **different signature**
+from release; installing release over debug does not preserve existing app
+data automatically. Back up any playlists or settings before uninstalling.

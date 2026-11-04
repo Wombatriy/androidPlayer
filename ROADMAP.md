@@ -199,27 +199,37 @@ A PR requires a manual phone test before merging. CI is manual-only: no push/PR-
 
 ## 10 — Higher-quality time stretching (incremental)
 
-### 10A — Safe DSP foundation (PR #13)
+### 10A — Safe DSP foundation and realtime R3 on phone (PR #13)
 - [x] Extract existing Sonic ExoPlayer construction into a single AudioEngineFactory, retaining current audio attributes and service lifetime
 - [x] Add explicit, tested speed-to-duration ratio and 0.8×–1.1× priority contract
 - [x] Add optional Windows PowerShell offline real-time-mode R3 listening comparison script; no GPL code bundled or downloaded by Android builds
 - [x] Document GPL vs commercial Rubber Band and LGPL SoundTouch choices
-- [ ] Build and test Sonic (ordinary APK) and R3 (opt-in APK) on the same phone
+- [x] On-device comparison: R3 was smooth at 0.70× while Sonic produced audible squeaks/artifacts on the same song
+- [x] Make R3 the default DSP for local Android builds; keep `-Prubberband=false` as the explicit Sonic fallback
 - [x] Implement an opt-in Android NDK + JNI R3 engine and Media3 PCM AudioProcessorChain, gated by -Prubberband=true
 - [x] Keep ordinary APK on unchanged Sonic; separate GPL-source setup pins Rubber Band 4.0.0 and uses a local-only source checkout
 - [ ] Build and listen on an actual arm64 Android phone, assess startup delay, rate changes and crackles
 - [ ] Before distributing any R3-enabled APK to others, choose GPL-compatible app licensing and distribute complete corresponding source, or obtain commercial licensing
 
-### 10B — A/B listening
+### 10B — Release readiness and visual polish (in PR #13)
+- [x] Rounded primary action buttons, darker slate background, and highlighted navigation tab
+- [x] Prepare locally signed R3 release APK with keystore outside Git and passwords in temporary environment variables
+- [x] Increment versionCode and keep signing key reusable for subsequent updates
+- [x] Explain Google Play Protect scanning/unknown-source limitations and Google Play internal testing
+- [ ] Confirm GPL-compatible licence and complete corresponding-source package **before distributing R3 APK to friends**
+- [ ] Build signed APK on Windows Android Studio and check install with Play Protect enabled
+- [ ] Test UI readability and tabs on phone; preserve waveform and playback behavior
+
+### 10C — Additional listening and A/B comparison
 - [ ] Compare known rhythmic tracks at 0.80, 0.85, 0.90, 0.95, 1.05, 1.10
 - [ ] Prioritize percussion attacks, cymbal decay, bass and vocals
 - [ ] Compare actual realtime output to Sonic on the same phone
 
-### 10C — Stability and performance
+### 10D — Stability and performance
 - [ ] Benchmark CPU, start latency, drift, buffering, A–B loop wrap, waveform clock and foreground service
 - [ ] Preserve current Sonic as fall-back, never switch engines in the middle of a seek
 
-### 10D — Selection and polishing
+### 10E — Selection and polishing
 - [ ] Adopt a new DSP by default only after repeatable audible improvement
 - [ ] Evaluate improvements outside 0.80×–1.10× if practical
 

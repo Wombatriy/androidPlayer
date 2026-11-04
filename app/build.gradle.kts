@@ -3,9 +3,31 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-// Enable R3 only for a local GPL evaluation APK:
-// ./gradlew :app:assembleDebug -Prubberband=true
-val useRubberBand = providers.gradleProperty("rubberband").orNull == "true"
+// R3 is the default playback engine after on-device listening tests.
+// Use -Prubberband=false to build the previous Sonic implementation.
+val useRubberBand = providers.gradleProperty("rubberband").orNull?.let {
+    when (it.lowercase()) {
+        "true" -> true
+        "false" -> false
+        else -> error("rubberband must be true or false")
+    }
+} ?: true
+
+// Never store signing secrets in Gradle files or version control.
+val releaseKeyStore = providers.environmentVariable("ANDROID_RELEASE_KEYSTORE").orNull
+val releaseStorePassword = providers.environmentVariable("ANDROID_RELEASE_STORE_PASSWORD").orNull
+val releaseKeyAlias = providers.environmentVariable("ANDROID_RELEASE_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.environmentVariable("ANDROID_RELEASE_KEY_PASSWORD").orNull
+val hasReleaseSigning = !releaseKeyStore.isNullOrBlank() &&
+    !releaseStorePassword.isNullOrBlank() &&
+    !releaseKeyAlias.isNullOrBlank() &&
+    !releaseKeyPassword.isNullOrBlank()
+
+// An unsigned "release" APK is not suitable for distributing to friends.
+if (gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) } &&
+    !hasReleaseSigning) {
+    error("Release signing variables are missing. Run tools/release/build-release.ps1.")
+}
 
 android {
     namespace = "com.wombatriy.androidplayer"
@@ -15,8 +37,8 @@ android {
         applicationId = "com.wombatriy.androidplayer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "1.0.0-rc1"
 
         buildConfigField("boolean", "WITH_RUBBERBAND", useRubberBand.toString())
         if (useRubberBand) {
@@ -26,6 +48,24 @@ android {
     }
 
     buildFeatures { buildConfig = true }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("localRelease") {
+                storeFile = file(requireNotNull(releaseKeyStore))
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            isDebuggable = false
+            isMinifyEnabled = false
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("localRelease")
+        }
+    }
 
     if (useRubberBand) {
         externalNativeBuild {

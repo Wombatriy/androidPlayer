@@ -37,7 +37,7 @@ class LibraryScreen(
     private val adapter = TrackAdapter(context)
     private val list = ListView(context).apply {
         dividerHeight = context.dp(1)
-        setBackgroundColor(Color.WHITE)
+        setBackgroundColor(PlayerPalette.surface)
         isFastScrollEnabled = true
         setOnItemClickListener { _, _, position, _ ->
             onTrackSelected(this@LibraryScreen.adapter.getItem(position))
@@ -62,7 +62,7 @@ class LibraryScreen(
 
     init {
         orientation = VERTICAL
-        setBackgroundColor(Color.rgb(249, 250, 252))
+        setBackgroundColor(PlayerPalette.background)
         setPadding(context.dp(12), context.dp(8), context.dp(12), context.dp(8))
 
         // Deliberately omit the redundant 'Music Library' title.

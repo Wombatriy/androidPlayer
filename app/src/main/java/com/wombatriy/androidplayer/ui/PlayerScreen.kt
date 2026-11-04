@@ -83,7 +83,7 @@ class PlayerScreen(context: Context, private val playback: PlaybackController, p
 
     init {
         isFillViewport = true
-        setBackgroundColor(Color.rgb(249, 250, 252))
+        setBackgroundColor(PlayerPalette.background)
         addView(column)
 
         column.addView(nameLabel)
