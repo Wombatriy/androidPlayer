@@ -28,8 +28,11 @@ class PlaybackQueue<T> {
     }
 
     /** Delete a reference, clearing selection if it was the active one. */
-    fun removeReference(value: T): Boolean {
-        val index = items.indexOf(value)
+    fun removeReference(
+        value: T,
+        sameItem: (T, T) -> Boolean = { a, b -> a == b }
+    ): Boolean {
+        val index = items.indexOfFirst { sameItem(it, value) }
         if (index < 0) return false
         items = items.filterIndexed { i, _ -> i != index }
         position = when {

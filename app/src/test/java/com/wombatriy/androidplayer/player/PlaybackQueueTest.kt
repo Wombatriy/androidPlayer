@@ -104,6 +104,15 @@ class PlaybackQueueTest {
         assertEquals("three", q.selectAt(1))
     }
 
+    @Test fun deletionMatchesStaleEntryByIdentityRatherThanLabel() {
+        data class Item(val uri: Int, val name: String)
+        val q = PlaybackQueue<Item>()
+        q.select(Item(2, "old"), listOf(Item(1, "a"), Item(2, "old"), Item(3, "c")))
+        assertTrue(q.removeReference(Item(2, "renamed")) { a, b -> a.uri == b.uri })
+        assertNull(q.current)
+        assertEquals(listOf(1, 3), q.snapshot().map { it.uri })
+    }
+
     @Test fun deletingMissingReferenceIsNoOp() {
         val q = makeQueue()
         assertFalse(q.removeReference("nonexistent"))
