@@ -154,3 +154,14 @@ Earlier implementation notes are archived in
 Contributions and bug reports are welcome; please include the Android
 version, phone model, playback speed, audio format and reproduction steps
 when reporting audio issues.
+
+## Library search
+
+Tap the magnifying glass just after **Current** in Library. With an empty
+query, the search window lists tracks marked **D** (automatically detected
+as the active BPM source) first; other tracks follow in their normal Library
+order. Type part of a filename for a case-insensitive `contains` search
+without source-based ranking. Tap a result to close the search and scroll
+Library to that track (like Current), **without starting playback**. The
+underlying sorted Library and playback queue are unchanged. Results use the
+already loaded BPM snapshot, so no filesystem or decoding work is performed.

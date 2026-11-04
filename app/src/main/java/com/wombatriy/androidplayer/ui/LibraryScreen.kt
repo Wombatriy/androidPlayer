@@ -8,6 +8,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.BaseAdapter
 import android.widget.Button
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.ProgressBar
@@ -20,6 +21,7 @@ import com.wombatriy.androidplayer.bpm.BpmFormatting
 import com.wombatriy.androidplayer.bpm.BpmRecord
 import com.wombatriy.androidplayer.bpm.BpmSource
 import com.wombatriy.androidplayer.library.LibraryOrder
+import com.wombatriy.androidplayer.library.LibrarySearchPolicy
 
 /**
  * Retained library with recycled ListView rows. No file/BPM I/O runs in
@@ -52,6 +54,15 @@ class LibraryScreen(
     private val rescan = compactButton("Rescan", onRescan)
     private val batch = compactButton("Batch BPM", onBatchToggle)
     private val current = compactButton("Current") { jumpToCurrent() }
+    private val search = ImageButton(context).apply {
+        setImageResource(android.R.drawable.ic_menu_search)
+        contentDescription = "Search tracks in Library"
+        minimumWidth = 0
+        minWidth = 0
+        setPadding(context.dp(8), context.dp(8), context.dp(8), context.dp(8))
+        scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+        setOnClickListener { openTrackSearch() }
+    }
     private val scanProgress = thinBar(context, indeterminate = true)
     private val bpmProgress = thinBar(context, indeterminate = false)
     private val info = context.textLine("Choose a music folder to begin.", 13f)
@@ -72,6 +83,7 @@ class LibraryScreen(
         for (button in listOf(choose, rescan, batch, current)) {
             actions.addView(button, LayoutParams(0, -2, 1f))
         }
+        actions.addView(search, LayoutParams(context.dp(44), context.dp(48)))
         addView(actions)
 
         scanProgress.visibility = GONE
@@ -86,6 +98,7 @@ class LibraryScreen(
         addView(list, LayoutParams(-1, 0, 1f))
         batch.isEnabled = false
         current.isEnabled = false
+        search.isEnabled = false
     }
 
     private fun compactButton(caption: String, action: () -> Unit): Button =
@@ -107,11 +120,27 @@ class LibraryScreen(
 
     private fun jumpToCurrent() {
         val uri = onCurrentRequested() ?: return
-        val pos = adapter.indexOfUri(uri)
-        if (pos >= 0) list.post { list.setSelectionFromTop(pos, context.dp(16)) }
-        else android.widget.Toast.makeText(
-            context, "Current song is not in this Library", android.widget.Toast.LENGTH_SHORT
-        ).show()
+        locateTrack(uri)
+    }
+
+    /** Finds the existing Library row without changing the player or queue. */
+    private fun locateTrack(uri: String) {
+        val position = adapter.indexOfUri(uri)
+        if (position >= 0) {
+            list.post { list.setSelectionFromTop(position, context.dp(16)) }
+        } else {
+            android.widget.Toast.makeText(
+                context, "Track is no longer in this Library", android.widget.Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    private fun openTrackSearch() {
+        val rows = adapter.searchEntries()
+        if (rows.isEmpty()) return
+        LibraryTrackSearch(context, rows) { selected ->
+            locateTrack(selected.uri.toString())
+        }.show()
     }
 
     val trackCount: Int get() = adapter.count
@@ -132,6 +161,7 @@ class LibraryScreen(
         scanProgress.visibility = if (loading) VISIBLE else GONE
         rescan.isEnabled = !loading
         batch.isEnabled = !loading && adapter.count > 0
+        search.isEnabled = adapter.count > 0
         info.text = if (loading) "Reading music folder…" else {
             if (adapter.count == 0) "No audio files found. Choose a folder to begin."
             else "${adapter.count} tracks · tap to play · hold for actions"
@@ -162,6 +192,7 @@ class LibraryScreen(
         val index = restoreIndex ?: list.firstVisiblePosition
         val offset = if (restoreIndex != null) restoreOffset else firstVisibleOffset
         adapter.submit(tracks)
+        search.isEnabled = adapter.count > 0
         current.isEnabled = onCurrentRequested()?.let(adapter::indexOfUri)?.let { it >= 0 } == true
         onOrderChanged(adapter.snapshot())
         val anchored = adapter.indexOfUri(previousAnchor)
@@ -210,6 +241,14 @@ class LibraryScreen(
         private val bpmValues = HashMap<String, BpmRecord>()
 
         fun snapshot(): List<Track> = items
+
+        /** Uses already-loaded metadata: no preferences or file reads in search. */
+        fun searchEntries(): List<LibrarySearchPolicy.Entry<Track>> = items.map { track ->
+            LibrarySearchPolicy.Entry(
+                track, track.name,
+                bpmValues[track.uri.toString()]?.source == BpmSource.DETECTED
+            )
+        }
 
         fun submit(newItems: List<Track>) {
             bpmValues.clear()

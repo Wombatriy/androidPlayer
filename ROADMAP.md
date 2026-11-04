@@ -273,3 +273,12 @@ Past experiment: Android platform mixer produced audible crackles and was remove
 - [ ] Audit full transitive dependency graph and asset copyrights
 - [ ] Verify Android 16 edge-to-edge, Back navigation and phone/tablet controls
 - [ ] Sign and upload AAB to Google Play Internal testing
+
+## 11 — Library search and review queue (PR pending)
+- [x] Add a small search icon immediately after **Current** in Library's action row
+- [x] Empty search text lists tracks whose active BPM provenance is **Detected** first, keeping the library order within groups
+- [x] Entered text filters track filenames with case-insensitive Kotlin `String.contains`, preserving Library order
+- [x] Selecting a result dismisses search and scrolls to that exact existing Library row, without starting playback or changing the queue
+- [x] Search works entirely on in-memory track/BPM snapshots, without rescanning the SAF tree
+- [x] Pure JVM regression tests for sorting, matching and non-mutation
+- [ ] Real-device verification with a large Library, loaded batch BPM metadata and list scroll persistence
