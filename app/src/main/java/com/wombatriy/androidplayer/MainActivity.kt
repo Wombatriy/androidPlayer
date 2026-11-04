@@ -131,6 +131,7 @@ class MainActivity : Activity() {
     private val libraryFiles by lazy { LibraryFileService(this) }
     private var fileActionBusy = false
     private var pendingExclude: Track? = null
+    private var fileBusyDialog: AlertDialog? = null
     private val renameFlow: RenameFlow by lazy {
         RenameFlow(
             activity = this,
@@ -271,7 +272,7 @@ class MainActivity : Activity() {
             store = playlists.store,
             resolve = playlists::resolve,
             onPlayTrack = { track, playlist, tracks ->
-                if (!renameFlow.busy) playlists.play(track, playlist, tracks)
+                if (!renameFlow.busy && !fileActionBusy) playlists.play(track, playlist, tracks)
                 else Toast.makeText(this, "Finish renaming first", Toast.LENGTH_SHORT).show()
             },
             onCatalogChanged = playlists::onPlaylistChanged
@@ -279,7 +280,7 @@ class MainActivity : Activity() {
         queueScreen = QueueScreen(
             this, playback,
             onChooseTrack = { index ->
-                if (!renameFlow.busy) playback.playQueueIndex(index)
+                if (!renameFlow.busy && !fileActionBusy) playback.playQueueIndex(index)
                 else Toast.makeText(this, "Finish renaming first", Toast.LENGTH_SHORT).show()
             }
         )
@@ -474,13 +475,20 @@ class MainActivity : Activity() {
         val wasCurrent = playback.currentTrack?.uri == track.uri
         val needsRestart = playback.suspendForRename(track)
         if (wasCurrent) playerScreen.cancelWaveformForFileOperation()
-        Toast.makeText(this, if (action == LibraryFileService.Action.DELETE)
-            "Deleting…" else "Moving and verifying copy…", Toast.LENGTH_SHORT).show()
+        fileBusyDialog = AlertDialog.Builder(this)
+            .setTitle("Updating music library")
+            .setMessage(if (action == LibraryFileService.Action.DELETE)
+                "Deleting the selected audio file…" else
+                "Moving audio and verifying both copies. Please keep the app open…")
+            .setCancelable(false)
+            .create().also { it.show() }
 
         libraryFiles.perform(
             action, track, tree, destinationParent, libraryScreen.tracksSnapshot()
         ) { result ->
             fileActionBusy = false
+            fileBusyDialog?.dismiss()
+            fileBusyDialog = null
             if (isFinishing || isDestroyed) return@perform
             result.onSuccess { updated ->
                 // Prevent the deleted URI from appearing in any queue, playlist
@@ -722,6 +730,8 @@ class MainActivity : Activity() {
             playback.removeListener(playbackListener)
             playerScreen.close()
             renameFlow.close()
+            fileBusyDialog?.dismiss()
+            fileBusyDialog = null
             libraryFiles.close()
             batchAnalyzer.close()
             bpmCoordinator.close()
